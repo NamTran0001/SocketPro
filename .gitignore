@@ -1,0 +1,35 @@
+# Build directory
+build/
+output/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Executables and object files
+*.exe 
+*.obj 
+*.o 
+*.pdb
+*.ilk
+*.exp
+*.lib   
+
+# Temporary files
+*.log
+*.tmp
+*.temp
+
+# Serena cache files (keep .serena/project.yml tracked)
+.serena/cache/
+.serena/memories/
+/.copilot_temp
+*.zip
+/.serena.
+/.vs
+.vscode/mcp.json
+/backup
+/Project/draft
