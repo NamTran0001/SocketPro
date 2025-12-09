@@ -59,6 +59,7 @@ public:
 
 	bool initializeServer();
 	bool waitForClient();
+	void disconnectClient();
 	void shutdownServer();
 
 	// Command socket operations
@@ -73,6 +74,7 @@ public:
 	SOCKET getCommandSocket() { return clientSockets.commandSocket; }
 	SOCKET getDataSocket() { return clientSockets.dataSocket; }
 	bool isClientConnected() { return clientSockets.isActive; }
+	bool isServerRunning() { return running; }
 
 private:
 	// Helper functions for chunked data transfer

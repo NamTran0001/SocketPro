@@ -86,33 +86,57 @@ bool ServerController::initializeServer()
 
 bool ServerController::waitForClient()
 {
-	if (!running)
-		return false;
+    if (!running)
+        return false;
 
-	cout << "Waiting for client connection..." << endl;
+    cout << "Waiting for client connection..." << endl;
 
-	int clientSize = sizeof(clientAddr);
-	clientSockets.commandSocket = accept(serverCommandSocket, (struct sockaddr *)&clientAddr, &clientSize);
-	if (clientSockets.commandSocket == INVALID_SOCKET)
-	{
-		cout << "Command socket accept failed. Error: " << WSAGetLastError() << endl;
-		return false;
-	}
+    int clientSize = sizeof(clientAddr);
+    clientSockets.commandSocket = accept(serverCommandSocket, (struct sockaddr *)&clientAddr, &clientSize);
+    if (clientSockets.commandSocket == INVALID_SOCKET)
+    {
+        cout << "Command socket accept failed. Error: " << WSAGetLastError() << endl;
+        return false;
+    }
 
-	cout << "Command socket connected." << endl;
+    cout << "Command socket connected." << endl;
+    
+    DWORD timeout = 2000; // 2 seconds timeout
+    setsockopt(serverDataSocket, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+    
+    clientSockets.dataSocket = accept(serverDataSocket, (struct sockaddr *)&clientAddr, &clientSize);
+    if (clientSockets.dataSocket == INVALID_SOCKET)
+    {
+        cout << "Data socket accept timeout/failed - will accept on-demand. Error: " << WSAGetLastError() << endl;
+        // Don't fail here - just mark data socket as not connected yet
+        clientSockets.dataSocket = INVALID_SOCKET;
+    }
+    else
+    {
+        cout << "Data socket connected." << endl;
+    }
 
-	clientSockets.dataSocket = accept(serverDataSocket, (struct sockaddr *)&clientAddr, &clientSize);
-	if (clientSockets.dataSocket == INVALID_SOCKET)
-	{
-		cout << "Data socket accept failed. Error: " << WSAGetLastError() << endl;
-		closesocket(clientSockets.commandSocket);
-		clientSockets.commandSocket = INVALID_SOCKET;
-		return false;
-	}
+    clientSockets.isActive = true;
+    return true;
+}
 
-	cout << "Data socket connected." << endl;
-	clientSockets.isActive = true;
-	return true;
+void ServerController::disconnectClient()
+{
+	std::lock_guard<std::mutex> lock(socketMutex);
+    clientSockets.isActive = false;
+
+    if (clientSockets.commandSocket != INVALID_SOCKET)
+    {
+        closesocket(clientSockets.commandSocket);
+        clientSockets.commandSocket = INVALID_SOCKET;
+    }
+
+    if (clientSockets.dataSocket != INVALID_SOCKET)
+    {
+        closesocket(clientSockets.dataSocket);
+        clientSockets.dataSocket = INVALID_SOCKET;
+    }
+    cout << "Client disconnected." << endl;
 }
 
 void ServerController::shutdownServer()

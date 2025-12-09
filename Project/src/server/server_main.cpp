@@ -148,54 +148,81 @@ int main()
 
 	serverRunning = true;
 
-	if (!serverController->waitForClient())
-	{
-		serverLogger->log("ERROR", "Failed to connect to client");
-		return 1;
-	}
-
-	serverLogger->log("INFO", "Client connected - using main thread for commands");
-
-	serverLogger->log("INFO", "Server running:");
-	serverLogger->log("INFO", "Command processing - Port " + std::to_string(COMMAND_PORT));
-	serverLogger->log("INFO", "Data thread - Port " + std::to_string(DATA_PORT));
-
-	// Process commands in main thread using CommandHandler
+	// Fix: Add outer loop to keep server running and accept new connections after disconnects
 	while (serverRunning.load())
 	{
-		std::string command = serverController->receiveCommand();
+		serverLogger->log("INFO", "Waiting for client connection...");
 
-		if (command.empty())
+		if (!serverController->waitForClient())
 		{
-			if (!serverController->isClientConnected())
-			{
-				serverLogger->log("MAIN", "Client disconnected");
-				serverRunning = false;
-				break;
-			}
+			serverLogger->log("ERROR", "Failed to connect to client, retrying...");
+			std::this_thread::sleep_for(std::chrono::seconds(1));
 			continue;
 		}
 
-		serverLogger->log("COMMAND", "Processing: " + command);
-		std::string reply = commandHandler->processCommand(command);
+		serverLogger->log("INFO", "Client connected - using main thread for commands");
 
-		// Check if command requires server shutdown
-		if (commandHandler->isShutdownCommand(command))
+		serverLogger->log("INFO", "Server running:");
+		serverLogger->log("INFO", "Command processing - Port " + std::to_string(COMMAND_PORT));
+		serverLogger->log("INFO", "Data thread - Port " + std::to_string(DATA_PORT));
+
+		// Process commands in main thread using CommandHandler
+		bool clientConnected = true;
+		while (clientConnected && serverRunning.load())
 		{
-			serverRunning = false;
+			try
+			{
+				std::string command = serverController->receiveCommand();
+
+				if (command.empty())
+				{
+					if (!serverController->isClientConnected())
+					{
+						serverLogger->log("MAIN", "Client disconnected");
+						clientConnected = false;
+						break;
+					}
+					continue;
+				}
+
+				serverLogger->log("COMMAND", "Processing: " + command);
+				std::string reply = commandHandler->processCommand(command);
+
+				// Check if command requires server shutdown
+				if (commandHandler->isShutdownCommand(command))
+				{
+					// serverRunning = false; // Don't shut down server on client exit
+				}
+
+				if (!reply.empty())
+				{
+					serverController->sendCommand(reply);
+				}
+			}
+			catch (const std::exception& e)
+			{
+				serverLogger->log("ERROR", "Exception in command loop: " + std::string(e.what()));
+				// If connection is lost, break inner loop to allow reconnection in outer loop
+				if (!serverController->isClientConnected())
+				{
+					clientConnected = false;
+				}
+			}
+			catch (...)
+			{
+				serverLogger->log("ERROR", "Unknown exception in command loop");
+				clientConnected = false;
+			}
 		}
 
-		if (!reply.empty())
+		serverController->disconnectClient();
+
+		if (livestreamServer && livestreamServer->isStreaming())
 		{
-			serverController->sendCommand(reply);
+			livestreamServer->stopLivestream();
 		}
 	}
-
-	if (livestreamServer && livestreamServer->isStreaming())
-	{
-		livestreamServer->stopLivestream();
-	}
-
+	
 	// Shutdown thread manager and all threads
 	if (globalThreadManager)
 	{

