@@ -217,9 +217,6 @@
                         <button onclick="control('RESTART')" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center gap-2">
                             <i class="fa-solid fa-rotate-right"></i> Restart
                         </button>
-                        <button onclick="control('SLEEP')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-moon"></i> Sleep
-                        </button>
                     </div>
                 </section>
                 
@@ -856,6 +853,90 @@ async function killApp(appName) {
 
     function clearKeylog() {
         document.getElementById('key-term').textContent = '';
+    }
+
+    // Screenshot capture function
+    async function captureScreen() {
+        const img = document.getElementById('screen-img');
+        const msg = document.getElementById('screen-msg');
+        
+        // Show loading state
+        msg.style.display = 'block';
+        msg.innerText = 'Capturing screenshot...';
+        img.style.display = 'none';
+        
+        try {
+            // Request screenshot WITH save=true to save to disk
+            const screenshotUrl = '/api/screenshot?save=true&t=' + Date.now();
+            
+            // Preload image to check if successful
+            const testImg = new Image();
+            
+            testImg.onload = function() {
+                // Success - display the screenshot
+                img.src = screenshotUrl;
+                img.dataset.cachedSrc = screenshotUrl;
+                img.style.display = 'block';
+                msg.style.display = 'none';
+                
+                // Save to localStorage for restoration
+                localStorage.setItem('lastScreenshotUrl', screenshotUrl);
+                lastScreenshotTime = Date.now();
+                localStorage.setItem('lastScreenshotTime', lastScreenshotTime.toString());
+                
+                // Show success notification
+                const timestamp = new Date().toLocaleTimeString();
+                console.log(`✅ Screenshot captured and saved at ${timestamp}`);
+                
+                // Optional: Show toast notification
+                showToast(`📸 Screenshot saved successfully at ${timestamp}`, 'success');
+            };
+            
+            testImg.onerror = function() {
+                // Error loading image
+                msg.style.display = 'block';
+                msg.innerText = '❌ Failed to capture screenshot. Server may be offline.';
+                img.style.display = 'none';
+                console.error('❌ Screenshot capture failed');
+                showToast('❌ Failed to capture screenshot', 'error');
+            };
+            
+            testImg.src = screenshotUrl;
+            
+        } catch (err) {
+            msg.style.display = 'block';
+            msg.innerText = '❌ Error: ' + err.message;
+            img.style.display = 'none';
+            console.error('Screenshot error:', err);
+            showToast('❌ Error: ' + err.message, 'error');
+        }
+    }
+
+    // Toast notification helper
+    function showToast(message, type = 'info') {
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 animate-fadeIn`;
+        toast.style.animation = 'fadeIn 0.3s ease-in-out';
+        
+        // Set color based on type
+        if (type === 'success') {
+            toast.className += ' bg-green-600';
+        } else if (type === 'error') {
+            toast.className += ' bg-red-600';
+        } else {
+            toast.className += ' bg-blue-600';
+        }
+        
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
     }
 
     // Webcam restore helper
