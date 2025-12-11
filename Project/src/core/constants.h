@@ -14,7 +14,6 @@ constexpr int DATA_CHUNK_SIZE = 1 * 1024 * 1024;
 constexpr int DATA_HEADER_SIZE = 24;
 constexpr int MAX_FRAME_SIZE = 10000000;
 constexpr int PROCESS_BUFFER_SIZE = 10240;
-constexpr int MAIL_BUFFER_SIZE = 8192;
 constexpr int MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 // File transfer limits
@@ -24,7 +23,7 @@ constexpr size_t MAX_ALLOWED_FILE_SIZE = 500 * 1024 * 1024; // 500MB limit for s
 constexpr int MAX_CONNECTION_ATTEMPTS = 5;
 constexpr int RETRY_DELAY_MS = 1000;
 constexpr int SOCKET_LISTEN_QUEUE = 3;
-constexpr int MAIL_TIMEOUT_MS = 3000;
+
 
 // Camera settings
 constexpr int CAMERA_WIDTH = 1280;
@@ -35,7 +34,6 @@ constexpr int JPEG_QUALITY = 90;
 // Timing settings
 constexpr int FRAME_DELAY_MS = 33;
 constexpr int THREAD_SLEEP_MS = 100;
-constexpr int EMAIL_CHECK_INTERVAL_MS = 30000;
 constexpr int COMMAND_RETRY_DELAY_MS = 1000;
 constexpr int CLIENT_STARTUP_DELAY_MS = 2000;
 constexpr int OPENCV_WINDOW_CHECK_MS = 50;
@@ -79,11 +77,6 @@ enum class DataTransferCommand : uint16_t
 	// File operations
 	GET_FILE = 0x0030,
 	LIST_DIR = 0x0031,
-
-	// Email operations
-	ENABLE_MAIL = 0x0040,
-	DISABLE_MAIL = 0x0041,
-	MAIL_STATUS = 0x0042,
 
 	// Connection control
 	EXIT = 0x0050,
@@ -136,12 +129,6 @@ inline const char *commandToString(DataTransferCommand cmd)
 		return "GET";
 	case DataTransferCommand::LIST_DIR:
 		return "LS";
-	case DataTransferCommand::ENABLE_MAIL:
-		return "ENABLEMAIL";
-	case DataTransferCommand::DISABLE_MAIL:
-		return "DISABLEMAIL";
-	case DataTransferCommand::MAIL_STATUS:
-		return "MAILSTATUS";
 	case DataTransferCommand::EXIT:
 		return "EXIT";
 	case DataTransferCommand::SUCCESS:
@@ -192,12 +179,6 @@ inline DataTransferCommand stringToCommand(const std::string &str)
 		return DataTransferCommand::GET_FILE;
 	if (str == "LS")
 		return DataTransferCommand::LIST_DIR;
-	if (str == "ENABLEMAIL")
-		return DataTransferCommand::ENABLE_MAIL;
-	if (str == "DISABLEMAIL")
-		return DataTransferCommand::DISABLE_MAIL;
-	if (str == "MAILSTATUS")
-		return DataTransferCommand::MAIL_STATUS;
 	if (str == "EXIT")
 		return DataTransferCommand::EXIT;
 	if (str == "SUCCESS")

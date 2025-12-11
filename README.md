@@ -1,6 +1,6 @@
 # Hệ Thống Điều Khiển Từ Xa - Dự Án Mạng C++
 
-Một ứng dụng mạng C++ toàn diện cho điều khiển và giám sát hệ thống từ xa, sử dụng kiến trúc server-client với xử lý đa luồng, lệnh email, streaming video thời gian thực và khả năng quản lý hệ thống tiên tiến.
+Một ứng dụng mạng C++ toàn diện cho điều khiển và giám sát hệ thống từ xa, sử dụng kiến trúc server-client với xử lý đa luồng, streaming video thời gian thực và khả năng quản lý hệ thống tiên tiến.
 
 ## ✅ TRẠNG THÁI DỰ ÁN & CHẤT LƯỢNG
 
@@ -24,7 +24,6 @@ Một ứng dụng mạng C++ toàn diện cho điều khiển và giám sát h�
 - **IPv4 Display**: Hiển thị tất cả giao diện mạng khi khởi động
 
 **Kiến trúc Client**: Kiến trúc ba luồng để tối đa hóa khả năng phản hồi  
-- **Email Thread**: Giám sát Gmail với khoảng thời gian 30 giây
 - **Command Thread**: Giám sát tình trạng socket và quản lý kết nối
 - **Data Threads**: Tạo luồng động cho mỗi hoạt động dữ liệu nặng
 
@@ -52,7 +51,6 @@ constexpr int MAX_FRAME_SIZE = 10000000;
 constexpr size_t MAX_ALLOWED_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
 // Timing & Performance
-constexpr int EMAIL_CHECK_INTERVAL_MS = 30000;
 constexpr int CLIENT_STARTUP_DELAY_MS = 2000;
 constexpr int CAMERA_WIDTH = 1280;
 constexpr int CAMERA_HEIGHT = 720;
@@ -92,44 +90,6 @@ constexpr int CAMERA_FPS = 60;
 | `LIVESTREAM` | Bắt đầu streaming video | **Luồng Chuyên Dụng**: OpenCV camera capture, MJPEG compression, stream qua LIVESTREAM_PORT | Hiển thị video thời gian thực với tùy chọn ghi |
 | `STOPLIVESTREAM` | Dừng streaming video | Dừng streaming thread, giải phóng camera, đóng kết nối | Lưu video đã ghi vào `./client/livestream_<timestamp>.avi` |
 
-### Hệ Thống Lệnh Email
-| Lệnh | Mô Tả | Hành Động Client |
-|------|-------|------------------|
-| `ENABLEMAIL` | Bật xử lý lệnh email | Kích hoạt thực thi lệnh email |
-| `DISABLEMAIL` | Tắt xử lý lệnh email | Giám sát email nhưng không thực thi lệnh |
-| `MAILSTATUS` | Kiểm tra trạng thái giám sát email | Hiển thị trạng thái giám sát email hiện tại |
-
-## 📧 TÍCH HỢP EMAIL
-
-**Hệ Thống Tích Hợp Gmail IMAP**
-- **Địa chỉ Email**: `nightshade.demo@gmail.com` (có thể cấu hình)
-- **Xác thực**: Xác thực Gmail app-specific password  
-- **Định dạng Lệnh**: Dòng tiêu đề email: `[Controller] <LỆNH>`
-- **Xử lý**: IMAP polling 30 giây cho email mới với tiêu đề controller
-- **Thực thi**: Chuyển đổi lệnh email thành lệnh server dựa trên socket
-- **Phản hồi**: Kết quả lệnh được gửi lại qua email response (khi được bật)
-- **Bảo mật**: Sử dụng Gmail app passwords, validate command whitelist
-
-**Lệnh Email Được Hỗ Trợ**:
-```
-Subject: [Controller] PROCESS_LIST      # Lấy tiến trình đang chạy
-Subject: [Controller] APP_LIST          # Lấy ứng dụng đã cài đặt  
-Subject: [Controller] SCREEN_CAPTURE    # Chụp màn hình
-Subject: [Controller] GET C:\file.txt   # Tải file
-Subject: [Controller] LS C:\            # Liệt kê thư mục
-Subject: [Controller] KEYLOG            # Bắt đầu keylogger
-Subject: [Controller] LIVESTREAM        # Bắt đầu video stream
-```
-
-**Luồng Xử Lý Lệnh Email**:
-1. **Kết nối IMAP**: Kết nối đến Gmail IMAP server (imap.gmail.com:993)
-2. **Quét Email**: Tìm kiếm email chưa đọc với tiêu đề có prefix "[Controller]"
-3. **Trích xuất Lệnh**: Parse lệnh từ dòng tiêu đề email
-4. **Validation**: Kiểm tra lệnh với whitelist và format validation
-5. **Thực thi Server**: Chuyển tiếp lệnh đã validate đến local server qua socket
-6. **Tạo Response**: Capture kết quả lệnh và gửi lại qua email
-7. **Quản lý Email**: Đánh dấu email đã xử lý là đã đọc
-
 ## 🛠️ NGĂN XẾP CÔNG NGHỆ
 
 ### Công Nghệ Cốt Lõi
@@ -159,7 +119,7 @@ Project/
 ├── CMakeLists.txt                 # Cấu hình build chính
 ├── src/
 │   ├── client/
-│   │   ├── client_main.cpp        # Entry point ứng dụng client & tích hợp email
+│   │   ├── client_main.cpp        # Entry point ứng dụng client
 │   │   ├── client_control.cpp     # Quản lý socket client
 │   │   ├── client_control.h       # Interface client controller
 │   │   ├── menu_display.cpp       # Hiển thị menu và định dạng console
@@ -177,7 +137,6 @@ Project/
 │   │   ├── process_manager.cpp/.h # Quản lý tiến trình qua Windows APIs
 │   │   ├── keylogger.cpp/.h       # Bắt keystroke với low-level hooks
 │   │   ├── livestream.cpp/.h      # Video streaming với tích hợp OpenCV
-│   │   ├── mail_controller.cpp/.h # Tích hợp Gmail IMAP
 │   │   ├── power_control.cpp/.h   # Quản lý nguồn hệ thống
 │   │   ├── screen_capture.cpp/.h  # Screenshot với Windows GDI + OpenCV
 │   │   └── thread_manager.cpp/.h  # Quản lý tác vụ đa luồng
@@ -267,7 +226,7 @@ cmake --build build --config Debug --target client
 
 **Kiến trúc Đa luồng**:
 - **Server**: Main command thread + dedicated threads cho keylogger/livestream + thread pool cho data tasks
-- **Client**: Main UI thread + email monitoring thread + dynamic data receiver threads
+- **Client**: Main UI thread + dynamic data receiver threads
 - **Thread Safety**: Sử dụng mutex đúng cách, atomic operations, RAII patterns
 
 **Tính năng Network Protocol**:
@@ -284,13 +243,6 @@ Chỉnh sửa `src/core/constants.h` để tùy chỉnh:
 - Kích thước buffer cho performance tuning
 - Giá trị timeout cho network operations
 - Cài đặt camera cho chất lượng livestream
-
-### Cấu hình Email
-Cập nhật `src/client/client_main.cpp`:
-```cpp
-string email = "your-email@gmail.com";
-string password = "your-app-password";
-```
 
 ### Cấu hình Build
 Tùy chỉnh `CMakeLists.txt` cho:
@@ -321,7 +273,6 @@ Dự án này được phát triển như một hệ thống học tập cho net
 ### Runtime Issues
 - **Connection Failed**: Check Windows Firewall settings
 - **Camera Access**: Ensure no other applications are using the camera
-- **Email Authentication**: Use Gmail app-specific passwords
 
 ### Performance Optimization  
 - **High CPU Usage**: Reduce camera FPS in constants.h
@@ -332,7 +283,6 @@ Dự án này được phát triển như một hệ thống học tập cho net
 
 - **Network Security**: Commands transmitted in plaintext (consider TLS in production)
 - **Authentication**: No built-in authentication system (add authentication layer)
-- **Email Security**: Uses Gmail app-specific passwords (consider OAuth2)
 - **File Access**: Server can access entire file system (restrict paths in production)
 - **Process Control**: Full system control capabilities (limit permissions)
 
