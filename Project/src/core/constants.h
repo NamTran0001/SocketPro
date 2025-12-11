@@ -48,7 +48,7 @@ constexpr int LIMIT_APP_DISPLAY = 25;
 constexpr int LIMIT_PROCESS_DISPLAY = 25;
 
 // Screen capture settings
-constexpr int SCREEN_CAPTURE_JPEG_QUALITY = 100;
+constexpr int SCREEN_CAPTURE_JPEG_QUALITY = 80;
 constexpr int SCREEN_CAPTURE_PNG_COMPRESSION = 3;
 constexpr int MAX_SCREEN_DIMENSION = 10000;
 

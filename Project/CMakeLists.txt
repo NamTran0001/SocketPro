@@ -35,7 +35,7 @@ if(OpenCV_FOUND)
     message(STATUS "OpenCV DLL directory: ${OpenCV_BIN_DIR}")
 else()
     message(FATAL_ERROR "OpenCV not found!")
-endif()
+endif() 
 
 include_directories(${OpenCV_INCLUDE_DIRS})
 
@@ -50,6 +50,7 @@ file(GLOB SERVER_SOURCES
     ${CMAKE_SOURCE_DIR}/src/server/*.cpp
 		${CMAKE_SOURCE_DIR}/src/common/*.cpp
     ${CMAKE_SOURCE_DIR}/src/core/*.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/system_stats.cpp
 )
 
 add_executable(client ${CLIENT_SOURCES})

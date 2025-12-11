@@ -80,9 +80,9 @@ cv::Mat ScreenCapture::hbitmapToMat(HBITMAP hbitmap)
 		return cv::Mat();
 	}
 
-	std::cout << "[ScreenCapture] BITMAP info - Width: " << bmp.bmWidth
-						<< ", Height: " << bmp.bmHeight
-						<< ", BitsPixel: " << bmp.bmBitsPixel << std::endl;
+	// std::cout << "[ScreenCapture] BITMAP info - Width: " << bmp.bmWidth
+	// 					<< ", Height: " << bmp.bmHeight
+	// 					<< ", BitsPixel: " << bmp.bmBitsPixel << std::endl;
 
 	int channels = bmp.bmBitsPixel / 8;
 	if (channels != 3 && channels != 4)
@@ -133,7 +133,7 @@ cv::Mat ScreenCapture::hbitmapToMat(HBITMAP hbitmap)
 		cv::cvtColor(mat, mat, cv::COLOR_BGRA2BGR);
 	}
 
-	std::cout << "[ScreenCapture] Successfully converted HBITMAP to Mat" << std::endl;
+	// std::cout << "[ScreenCapture] Successfully converted HBITMAP to Mat" << std::endl;
 
 	return mat;
 }
@@ -147,7 +147,7 @@ cv::Mat ScreenCapture::captureFullScreen()
 		int screenWidth = GetSystemMetrics(SM_CXSCREEN);
 		int screenHeight = GetSystemMetrics(SM_CYSCREEN);
 
-		std::cout << "[ScreenCapture] Screen dimensions: " << screenWidth << "x" << screenHeight << std::endl;
+		// std::cout << "[ScreenCapture] Screen dimensions: " << screenWidth << "x" << screenHeight << std::endl;
 
 		if (screenWidth <= 0 || screenHeight <= 0)
 		{
@@ -163,7 +163,7 @@ cv::Mat ScreenCapture::captureFullScreen()
 			return cv::Mat();
 		}
 
-		std::cout << "[ScreenCapture] Attempting to capture screen..." << std::endl;
+		// std::cout << "[ScreenCapture] Attempting to capture screen..." << std::endl;
 
 		HBITMAP hbitmap = captureScreen(0, 0, screenWidth, screenHeight);
 		if (hbitmap == NULL)
@@ -172,7 +172,7 @@ cv::Mat ScreenCapture::captureFullScreen()
 			return cv::Mat();
 		}
 
-		std::cout << "[ScreenCapture] Screen bitmap captured, converting to Mat..." << std::endl;
+		// std::cout << "[ScreenCapture] Screen bitmap captured, converting to Mat..." << std::endl;
 
 		cv::Mat result = hbitmapToMat(hbitmap);
 		if (result.empty())
@@ -181,8 +181,8 @@ cv::Mat ScreenCapture::captureFullScreen()
 			return cv::Mat();
 		}
 
-		std::cout << "[ScreenCapture] Conversion successful, Mat size: "
-							<< result.cols << "x" << result.rows << ", channels: " << result.channels() << std::endl;
+		// std::cout << "[ScreenCapture] Conversion successful, Mat size: "
+		// 					<< result.cols << "x" << result.rows << ", channels: " << result.channels() << std::endl;
 
 		return result;
 	}
