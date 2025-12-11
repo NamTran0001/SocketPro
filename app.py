@@ -306,6 +306,45 @@ def control_action():
     resp = send_command_packet(cmd_str)
     return jsonify({'response': resp})
 
+@app.route('/api/kill', methods=['POST'])
+def kill_process_or_app():
+    """Kill a process or stop an application"""
+    data = request.get_json()
+    kill_type = data.get('type')  # 'process' or 'app'
+    target = data.get('target')   # PID or app name
+    
+    if not kill_type or not target:
+        return jsonify({'status': 'error', 'message': 'Missing type or target'}), 400
+    
+    try:
+        if kill_type == 'process':
+            command = f'STOP {target}'
+        elif kill_type == 'app':
+            command = f'APP_STOP {target}'
+        else:
+            return jsonify({'status': 'error', 'message': 'Invalid type'}), 400
+        
+        response = send_command_packet(command)
+        
+        # Lọc chỉ lấy ACK message, bỏ qua system stats JSON
+        if response:
+            lines = response.split('\n')
+            # Tìm dòng chứa "ACK:" hoặc "Process stopped"
+            ack_line = next((line for line in lines if 'ACK:' in line or 'Process stopped' in line), None)
+            
+            if ack_line:
+                return jsonify({'status': 'success', 'message': ack_line})
+            elif 'not found' in response.lower() or 'error' in response.lower():
+                return jsonify({'status': 'error', 'message': response})
+            else:
+                # Fallback
+                return jsonify({'status': 'success', 'message': f'{kill_type.capitalize()} command sent'})
+        
+        return jsonify({'status': 'error', 'message': 'No response from server'}), 500
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/screenshot')
 def screenshot():
     """Chụp màn hình"""

@@ -362,7 +362,14 @@
             </div>
             <div style="height: 500px; overflow: auto;">
                 <table class="w-full table-custom">
-                    <thead><tr><th class="text-left p-2">Name</th><th class="text-left p-2">PID</th><th class="text-left p-2">Memory</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th class="text-left p-2">Name</th>
+                            <th class="text-left p-2">PID</th>
+                            <th class="text-left p-2">Memory</th>
+                            <th class="text-left p-2">Action</th>
+                        </tr>
+                    </thead>
                     <tbody id="proc-list"><tr><td colspan="3" class="text-center p-4">Click REFRESH to load</td></tr></tbody>
                 </table>
             </div>
@@ -388,7 +395,14 @@
             </div>
             <div style="height: 500px; overflow: auto;">
                 <table class="w-full table-custom">
-                    <thead><tr><th class="text-left p-2">Name</th><th class="text-left p-2">Version</th><th class="text-left p-2">Location</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th class="text-left p-2">Name</th>
+                            <th class="text-left p-2">Version</th>
+                            <th class="text-left p-2">Location</th>
+                            <th class="text-left p-2">Action</th>
+                        </tr>
+                    </thead>
                     <tbody id="app-list"><tr><td colspan="3" class="text-center p-4">Click REFRESH to load</td></tr></tbody>
                 </table>
             </div>
@@ -623,58 +637,125 @@
     }
 
     async function loadList(type) {
-        const tbody = document.getElementById(type == 'processes' ? 'proc-list' : 'app-list');
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center">Loading data...</td></tr>';
-        const res = await fetch('/api/' + type);
-        const data = await res.json();
-        tbody.innerHTML = '';
-        data.forEach(d => {
-            const row = (type == 'processes') 
-                ? `<td>${d.name}</td><td>${d.pid}</td><td>${d.mem}</td>`
-                : `<td>${d.name}</td><td>${d.version}</td><td>${d.publisher}</td>`;
-            tbody.innerHTML += `<tr>${row}</tr>`;
-        });
-    }
+    const tbody = document.getElementById(type == 'processes' ? 'proc-list' : 'app-list');
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center">Loading data...</td></tr>';
+    const res = await fetch('/api/' + type);
+    const data = await res.json();
+    tbody.innerHTML = '';
+    
+    data.forEach(d => {
+        if (type == 'processes') {
+            // THÊM CỘT ACTION VÀ NÚT KILL
+            tbody.innerHTML += `
+                <tr>
+                    <td>${d.name}</td>
+                    <td>${d.pid}</td>
+                    <td>${d.mem}</td>
+                    <td>
+                        <button onclick="killProcess('${d.pid}', '${d.name}')" 
+                                class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm">
+                            <i class="fa-solid fa-skull-crossbones mr-1"></i>KILL
+                        </button>
+                    </td>
+                </tr>`;
+        } else {
+            tbody.innerHTML += `
+                <tr>
+                    <td>${d.name}</td>
+                    <td>${d.version}</td>
+                    <td>${d.publisher}</td>
+                    <td>
+                        <button onclick="killApp('${d.name.replace(/'/g, "\\'")}')" 
+                                class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm">
+                            <i class="fa-solid fa-ban mr-1"></i>STOP
+                        </button>
+                    </td>
+                </tr>`;
+        }
+    });
+}
 
-        function captureScreen() {
-        const img = document.getElementById('screen-img');
-        const msg = document.getElementById('screen-msg');
+// Kill process by PID
+async function killProcess(pid, name) {
+    if (!confirm(`Kill process "${name}" (PID: ${pid})?`)) return;
+    
+    try {
+        const res = await fetch('/api/kill', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({type: 'process', target: pid})
+        });
         
-        // Reset trạng thái
-        msg.style.display = 'block';
-        msg.innerText = "Capturing...";
-        img.style.display = 'none';
-        img.src = ''; // Clear old image
-        img.dataset.cachedSrc = ''; // Clear cache marker
+        const data = await res.json();
         
-        const timestamp = Date.now();
-        // FIX: Thêm save=true để chỉ lưu khi user click CAPTURE
-        const screenshotUrl = '/api/screenshot?save=true&t=' + timestamp;
-        
-        // Setup handlers TRƯỚC KHI set src
-        img.onload = () => { 
-            console.log('✅ Screenshot loaded successfully');
-            img.style.display = 'block'; 
-            msg.style.display = 'none';
-            
-            // Save to localStorage AND mark as cached
-            lastScreenshotTime = timestamp;
-            localStorage.setItem('lastScreenshotTime', timestamp.toString());
-            localStorage.setItem('lastScreenshotUrl', screenshotUrl);
-            img.dataset.cachedSrc = screenshotUrl; // Mark this image as cached
-        };
-        
-        img.onerror = (e) => {
-            console.error('❌ Screenshot load error:', e);
-            msg.innerText = "Error loading screenshot";
-            msg.style.display = 'block';
-            img.style.display = 'none';
-        };
-        
-        // Set src SAU KHI setup handlers
-        img.src = screenshotUrl;
-        console.log('📸 Requesting screenshot:', screenshotUrl);
+        if (data.status === 'success') {
+            alert(`✅ ${data.message}`);
+            loadList('processes'); // Reload process list
+        } else {
+            alert(`❌ ${data.message}`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
     }
+}
+
+// Kill app by name
+// Kill app by name
+async function killApp(appName) {
+    if (!confirm(`Stop application "${appName}"?`)) return;
+    
+    // Cải thiện: Tìm từ khóa chính xác hơn từ tên app
+    let processName = appName.trim();
+    
+    // Mapping các app phổ biến sang tên process thực
+    const appToProcess = {
+        'google chrome': 'chrome',
+        'microsoft edge': 'msedge',
+        'mozilla firefox': 'firefox',
+        'visual studio code': 'code',
+        'pycharm': 'pycharm64',
+        'discord': 'discord',
+        'spotify': 'spotify',
+        'notepad': 'notepad',
+        'calculator': 'calc',
+        'paint': 'mspaint'
+    };
+    
+    // Tìm mapping
+    const lowerName = processName.toLowerCase();
+    for (const [key, value] of Object.entries(appToProcess)) {
+        if (lowerName.includes(key)) {
+            processName = value;
+            break;
+        }
+    }
+    
+    // Nếu không match, lấy từ đầu tiên (loại bỏ version/info)
+    if (processName === appName) {
+        processName = appName.split(' ')[0].split('.')[0];
+    }
+    
+    console.log(`[KILL_APP] Killing "${appName}" -> process: "${processName}"`);
+    
+    try {
+        const res = await fetch('/api/kill', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({type: 'app', target: processName})
+        });
+        
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            alert(`✅ ${data.message}`);
+            loadList('apps'); // Reload app list
+        } else {
+            alert(`❌ Failed to stop "${appName}"\n\nDetails: ${data.message}\n\nTry stopping from Processes tab instead.`);
+        }
+    } catch (err) {
+        alert(`Error: ${err.message}`);
+    }
+}
 
     function toggleCam(state) {
         const img = document.getElementById('cam-img');
