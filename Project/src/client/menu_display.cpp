@@ -97,13 +97,10 @@ void displayMenu()
 
 	cout << endl;
 	setColor(COLOR_SECTION);
-	cout << " FILE & EMAIL" << endl;
+	cout << " FILE OPERATIONS" << endl;
 	printLine('-', consoleWidth, COLOR_BORDER);
 	printCommand("GET", "Download file from server", consoleWidth, "<file>");
 	printCommand("LS", "List directory contents", consoleWidth, "<path>");
-	printCommand("ENABLEMAIL", "Enable email command processing", consoleWidth);
-	printCommand("DISABLEMAIL", "Disable email command processing", consoleWidth);
-	printCommand("MAILSTATUS", "Check email monitoring status", consoleWidth);
 
 	cout << endl;
 	printLine('=', consoleWidth, COLOR_BORDER);
