@@ -1,18 +1,104 @@
-# Hệ Thống Điều Khiển Từ Xa - Web UI với Flask
+# 🕵️ NET-GHOST v2.0 - Remote System Control & Monitoring
 
-Một ứng dụng web control panel sử dụng Python Flask để điều khiển và giám sát hệ thống từ xa. Flask web UI giao tiếp với C++ server qua raw TCP sockets để thực hiện các tác vụ điều khiển, streaming video, keylogger và quản lý hệ thống.
+<div align="center">
 
-## ✅ TRẠNG THÁI DỰ ÁN & CHẤT LƯỢNG
+![Status](https://img.shields.io/badge/status-production%20ready-brightgreen)
+![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)
+![Python](https://img.shields.io/badge/python-3.8+-blue)
+![C++](https://img.shields.io/badge/C++-17-blue)
+![License](https://img.shields.io/badge/license-Educational-orange)
 
-- **Backend Status**: ✅ C++ Server biên dịch thành công với CMake + Visual Studio 2022 MSVC++
-- **Web UI Status**: ✅ Flask web application với real-time features (SSE, MJPEG streaming)
-- **Architecture Compliance**: ✅ Tất cả lệnh được triển khai theo đặc tả Architecture.md  
-- **Code Quality**: ✅ Modern C++17 backend, Python 3.8+ Flask frontend
-- **Dependencies**: ✅ Backend: OpenCV 4.11.0, Winsock2, Windows APIs | Frontend: Flask, psutil, OpenCV-Python
-- **Target Platform**: Windows x64 C++ server + Cross-platform Flask web UI
-- **Protocol**: TCP socket communication với persistent connections và chunked transfer
+**Professional remote system management platform with real-time monitoring and control capabilities**
 
-## 🏗️ TỔNG QUAN KIẾN TRÚC
+[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API Reference](#-api-reference) • [Architecture](#-architecture)
+
+</div>
+
+---
+
+## 📋 Table of Contents
+
+- [Overview](#-overview)
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Requirements](#-requirements)
+- [Quick Start](#-quick-start)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [API Reference](#-api-reference)
+- [Development](#-development)
+- [Troubleshooting](#-troubleshooting)
+- [Security](#-security)
+- [Contributing](#-contributing)
+
+---
+
+## 🌟 Overview
+
+NET-GHOST is a powerful **two-tier remote administration system** combining a Python Flask web interface with a high-performance C++ backend server. It provides comprehensive system control, real-time monitoring, and media streaming capabilities through an elegant web dashboard.
+
+### 🎯 Project Status
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| **C++ Backend** | ✅ Production Ready | Built with CMake + VS2022 MSVC++, C++17 |
+| **Flask Web UI** | ✅ Production Ready | Modern responsive dashboard with Tailwind CSS |
+| **Real-time Features** | ✅ Fully Functional | SSE keylogger, MJPEG streaming (webcam/screen) |
+| **Architecture** | ✅ Compliant | Follows Architecture.md specification |
+| **Network Protocol** | ✅ Stable | TCP persistent connections with chunked transfer |
+| **Dependencies** | ✅ Resolved | OpenCV 4.11.0, Flask, psutil, Windows SDK |
+
+### 🔑 Key Highlights
+
+- 🌐 **Modern Web Interface** - Clean dashboard with real-time updates every 3 seconds
+- 🚀 **High Performance** - Persistent TCP connections, multi-threaded C++ backend
+- 📹 **Media Streaming** - Webcam & screen monitoring with MJPEG protocol (30-60 FPS)
+- ⌨️ **Live Keylogger** - Real-time keystroke streaming via Server-Sent Events (SSE)
+- 💻 **System Control** - Process management, application launching, power control
+- 📊 **Resource Monitoring** - CPU, RAM, disk, network stats with visual charts
+- 🔌 **Protocol Flexibility** - 4 specialized TCP ports for different operations
+
+---
+
+## ✨ Features
+
+### 🖥️ System Management
+- **Process Monitor** - View all running processes with PID, name, memory usage, CPU usage
+- **Kill Processes** - Terminate processes by PID or application name
+- **Application Control** - Start/stop installed applications remotely
+- **Power Management** - Shutdown, restart system commands
+- **System Stats** - Real-time CPU, RAM, disk usage, network I/O monitoring
+
+### 📸 Media Capture & Streaming
+- **Screenshot Capture** - On-demand full-screen screenshots (JPEG, 1920x1080)
+- **Live Screen Monitoring** - Real-time screen streaming (~10 FPS, MJPEG)
+- **Webcam Streaming** - HD video streaming (configurable 30-60 FPS)
+- **Video Recording** - Record webcam streams to AVI files with timestamps
+- **Auto-save Screenshots** - Automatic screenshot archiving to `screenshots/` folder
+
+### ⌨️ Keylogging & Monitoring
+- **Real-time Keylogger** - Live keystroke capture via Server-Sent Events
+- **Session Statistics** - Track total keys pressed, session duration, last activity
+- **Terminal Display** - Console-style keylog viewer with auto-scroll
+- **Start/Stop Control** - Toggle keylogger from web interface
+
+### 📊 Dashboard & Analytics
+- **Resource Graphs** - Visual CPU/RAM usage indicators
+- **Network Stats** - Upload/download speeds, total data transferred
+- **Recent Apps** - Quick launch shortcuts for common applications
+- **Uptime Tracking** - System boot time and uptime duration
+- **Connection Status** - Real-time server health monitoring
+
+### 🔧 Advanced Features
+- **Persistent Connections** - Socket connection pooling for low latency
+- **Auto-reconnect** - Automatic retry on connection failures
+- **Multi-tab Interface** - Organized sidebar navigation (Dashboard, Processes, Apps, Screen, Webcam, Keylog)
+- **Responsive Design** - Mobile-friendly interface with Tailwind CSS
+- **Dark Theme** - Professional cyberpunk-inspired UI with cyan accents
+
+---
+
+## 🏗️ Architecture
 
 ### Thiết Kế Hai Tầng (Two-Tier Architecture)
 
@@ -410,4 +496,4 @@ This project is developed for educational and research purposes. Ensure complian
 - **Tools**: CMake, Visual Studio 2022, Python 3.8+
 
 ---
-**Last Updated**: December 2025 | **Status**: ✅ Production Ready
+**Last Updated**: January 2025 | **Status**: ✅ Production Ready
