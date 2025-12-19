@@ -24,7 +24,6 @@ Why this split: the C++ side performs privileged / platform-specific capture and
 - Header for large DATA channel (24 bytes): `HEADER_FORMAT = '>HHIIIII'` (Big-endian network byte order, packed as uint16, uint16, uint32, uint32, uint32, uint32, uint32). `HEADER_SIZE = 24`.
   - Fields unpacked as: `cmd, res, total, curr, size, total_size, checksum` in `receive_large_data()`.
   - Python expects chunks: header then `size` bytes of payload (loop until `curr >= total - 1`).
-  - **IMPORTANT**: Changed from little-endian (`=`) to big-endian (`>`) to match C++ network byte order.
 
 - Livestream protocol: server sends 4-byte signed int (C `int`) size then JPEG bytes. Python unpacks with `struct.unpack('i', size_data)`.
 
