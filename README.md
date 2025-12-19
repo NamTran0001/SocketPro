@@ -489,193 +489,331 @@ python app.py
 
 ## ⚙️ Configuration
 
-```
-SocketPro/
-├── app.py                         # Flask web server chính
-├── templates/
-│   └── dashboard.html             # Web UI dashboard
-├── static/                        # CSS, JS, assets
-├── screenshots/                   # Screenshot cache (auto-created)
-├── recordings/                    # Video recordings (auto-created)
-├── requirements.txt               # Python dependencies
-│
-├── src/                          # C++ Server source code
-│   ├── server/
-│   │   ├── server_main.cpp
-│   │   ├── server_control.cpp/.h
-│   │   └── command_handler.cpp/.h
-│   ├── core/
-│   │   ├── constants.h           # Network ports & config
-│   │   ├── process_manager.cpp/.h
-│   │   ├── app_manager.cpp/.h
-│   │   ├── screen_capture.cpp/.h
-│   │   ├── keylogger.cpp/.h
-│   │   ├── livestream.cpp/.h
-│   │   └── thread_manager.cpp/.h
-│   └── common/
-│       ├── logger.cpp/.h
-│       └── string_utils.h
-│
-├── build/                        # C++ build output
-│   └── Debug/
-│       └── server.exe            # C++ server executable
-│
-└── .github/
-    └── copilot-instructions.md   # Development guide
+---
+
+## ⚙️ Configuration
+
+### C++ Server Configuration
+
+Edit [src/core/constants.h](src/core/constants.h):
+
+```cpp
+// ===== NETWORK CONFIGURATION =====
+constexpr int COMMAND_PORT = 8888;      // Command channel
+constexpr int DATA_PORT = 8889;         // Large data transfers
+constexpr int LIVESTREAM_PORT = 8890;   // Video streaming
+constexpr int KEYLOGGER_PORT = 8891;    // Keylogger stream
+
+// ===== BUFFER & CHUNK SIZES =====
+constexpr int COMMAND_BUFFER_SIZE = 4096;          // 4KB
+constexpr int DATA_CHUNK_SIZE = 1024 * 1024;       // 1MB per chunk
+constexpr int MAX_FRAME_SIZE = 10000000;           // 10MB max frame
+constexpr size_t MAX_ALLOWED_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
+// ===== CAMERA SETTINGS =====
+constexpr int CAMERA_WIDTH = 1280;      // Resolution width
+constexpr int CAMERA_HEIGHT = 720;      // Resolution height  
+constexpr int CAMERA_FPS = 60;          // Target FPS
+
+// ===== TIMEOUTS =====
+constexpr int CLIENT_STARTUP_DELAY_MS = 2000;  // Server startup delay
 ```
 
-## 🚀 HƯỚNG DẪN SETUP & CHẠY
-
-### Bước 1: Setup C++ Server
-
-#### Điều Kiện Tiên Quyết
-1. **Visual Studio 2022 Community** với C++ development workload
-2. **CMake 3.20+** (bao gồm với VS2022)
-3. **OpenCV 4.11.0** được cài đặt tại `C:\opencv`
-
-#### Build C++ Server
+**After modifying**, rebuild server:
 ```powershell
-# Di chuyển đến thư mục project
-cd c:\python\Projects\Socket\SocketPro
-
-# Cấu hình CMake
-cmake -B build -G "Visual Studio 17 2022" -A x64
-
-# Build server
 cmake --build build --config Debug --target server
 ```
 
-#### Chạy C++ Server
+### Flask Server Configuration
+
+Edit [app.py](app.py):
+
+```python
+# ===== CONNECTION SETTINGS =====
+VM_IP = "127.0.0.1"  # C++ server IP address
+
+# Port configuration (must match C++ constants.h)
+COMMAND_PORT = 8888
+DATA_PORT = 8889
+LIVESTREAM_PORT = 8890
+KEYLOG_PORT = 8891
+
+# ===== PROTOCOL SETTINGS =====
+HEADER_FORMAT = '>HHIIIII'  # Big-endian, 7 fields
+HEADER_SIZE = 24            # Bytes
+
+# ===== SERVER SETTINGS =====
+# At bottom of file:
+if __name__ == '__main__':
+    app.run(
+        host='0.0.0.0',    # Listen on all interfaces
+        port=5001,         # Flask web server port
+        debug=True,        # Enable auto-reload on code changes
+        threaded=True      # Handle multiple requests concurrently
+    )
+```
+
+### Performance Tuning
+
+#### For Low-End Systems (CPU < 4 cores, RAM < 8GB):
+```python
+# app.py - Reduce polling frequency
+dashboardInterval = setInterval(updateDashboardStats, 5000);  # 5s instead of 3s
+
+# Reduce screen stream FPS
+fps = 5  # In screen_stream_simple() function
+```
+
+#### For High-End Systems (CPU > 8 cores, RAM > 16GB):
+```cpp
+// constants.h - Increase quality
+constexpr int CAMERA_WIDTH = 1920;
+constexpr int CAMERA_HEIGHT = 1080;
+constexpr int CAMERA_FPS = 120;
+constexpr int DATA_CHUNK_SIZE = 4 * 1024 * 1024;  // 4MB chunks
+```
+
+### Firewall Configuration
+
+**Windows Firewall (PowerShell Admin)**:
 ```powershell
-# Khởi động server (phải chạy TRƯỚC)
-.\build\Debug\server.exe
+# Allow C++ server
+New-NetFirewallRule -DisplayName "NET-GHOST Server" `
+    -Direction Inbound -Program "C:\python\Projects\Socket\SocketPro\build\Debug\server.exe" `
+    -Action Allow
 
-# Server sẽ listen trên 127.0.0.1 ports 8888-8891
+# Allow specific ports
+New-NetFirewallRule -DisplayName "NET-GHOST Ports" `
+    -Direction Inbound -Protocol TCP -LocalPort 8888-8891 -Action Allow
+
+# Allow Flask (if accessing from other machines)
+New-NetFirewallRule -DisplayName "Flask Web UI" `
+    -Direction Inbound -Protocol TCP -LocalPort 5001 -Action Allow
 ```
 
-### Bước 2: Setup Flask Web UI
+---
 
-#### Cài Đặt Python Dependencies
-```bash
-# Tạo virtual environment (khuyến nghị)
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
+## 📚 API Reference
 
-# Cài packages
-pip install flask psutil opencv-python numpy
+### REST API Endpoints
+
+#### System Monitoring
+
+**GET `/api/ping`**
+```json
+// Response
+{
+  "status": "online" | "offline"
+}
 ```
 
-#### Tạo `requirements.txt`
-```txt
-Flask==3.0.0
-psutil==5.9.6
-opencv-python==4.11.0.86
-numpy==1.26.2
+**GET `/api/system/stats`**
+```json
+{
+  "cpu_percent": 45.2,
+  "mem_used_gb": 8.3,
+  "mem_total_gb": 16.0,
+  "mem_percent": 51.9,
+  "uptime": "5h 32m",
+  "process_count": 234,
+  "disk_used_gb": 250.5,
+  "disk_total_gb": 500.0,
+  "disk_percent": 50.1,
+  "net_sent_mb": 1024.5,
+  "net_recv_mb": 2048.3
+}
 ```
 
-#### Cấu Hình Connection
-Chỉnh sửa `app.py` nếu C++ server chạy trên máy khác:
-```python
-VM_IP = "192.168.1.100"  # IP của máy chạy C++ server
+**GET `/api/network/stats`**
+```json
+{
+  "download_speed_mb": 2.5,
+  "upload_speed_mb": 0.8,
+  "total_sent_gb": 15.2,
+  "total_recv_gb": 45.8,
+  "packets_sent": 1500000,
+  "packets_recv": 2000000,
+  "connections": 42
+}
 ```
 
-#### Chạy Flask Web UI
-```bash
-python app.py
+#### Process Management
 
-# Web UI sẽ chạy trên http://localhost:5001
+**GET `/api/processes`**
+```json
+[
+  {
+    "pid": "1234",
+    "name": "chrome.exe",
+    "memory": "512 MB",
+    "cpu": "15.2%"
+  },
+  // ...more processes
+]
 ```
 
-### Bước 3: Truy Cập Web Dashboard
-
-Mở trình duyệt và truy cập:
-```
-http://localhost:5001
-```
-
-## 📊 ĐẶC ĐIỂM HIỆU SUẤT
-
-### Hiệu Suất Mạng
-- **Command Latency**: < 50ms cho lệnh đơn giản
-- **Screenshot Capture**: 200-500ms cho full screen (1920x1080)
-- **Webcam Stream**: 30-60 FPS (configurable trong C++ constants.h)
-- **Screen Stream**: ~10 FPS (polling-based, optimized for bandwidth)
-- **Keylogger**: Real-time với latency < 100ms
-
-### Socket Management
-- **Persistent Connections**: Sử dụng connection pooling để giảm overhead
-- **Auto-Reconnect**: Tự động kết nối lại khi connection bị ngắt
-- **Thread Safety**: Global socket locks với `threading.Lock()`
-- **Timeout Handling**: Command socket 3s, Data socket 10-15s
-
-### Chi Tiết Triển Khai Kỹ Thuật
-
-**Giao Thức Chunked Data Transfer**:
-```python
-# Header format (24 bytes, big-endian)
-HEADER_FORMAT = '>HHIIIII'
-# Fields: cmd, res, total, curr, size, total_size, checksum
-
-# Workflow:
-1. Flask gửi command qua COMMAND_PORT
-2. C++ server gửi ACK hoặc "CHUNKED" response
-3. Flask đọc chunks từ DATA_PORT:
-   - Đọc 24-byte header
-   - Đọc 'size' bytes payload
-   - Lặp lại cho đến khi curr >= total - 1
-4. Ghép chunks thành full payload
+**GET `/api/apps`**
+```json
+[
+  {
+    "name": "Google Chrome",
+    "version": "120.0.6099.109",
+    "publisher": "Google LLC",
+    "path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  },
+  // ...more apps
+]
 ```
 
-**MJPEG Streaming Protocol**:
-```python
-# Livestream frame format:
-1. Đọc 4 bytes size (struct.unpack('i', size_data))
-2. Đọc 'size' bytes JPEG data
-3. Yield frame với multipart/x-mixed-replace boundary
-4. Lặp lại cho đến khi client disconnect
+**POST `/api/control`**
+```json
+// Request
+{
+  "cmd": "START",  // START | STOP | RESTART | SHUTDOWN
+  "arg": "C:\\path\\to\\program.exe"  // Optional for most commands
+}
+
+// Response
+{
+  "response": "ACK: Process started successfully"
+}
 ```
 
-**SSE Keylogger Stream**:
-```python
-# Server-Sent Events format:
-Response: text/event-stream
-Data format: "data: [timestamp] key\n\n"
+**POST `/api/kill`**
+```json
+// Kill by PID
+{
+  "type": "process",
+  "target": "1234"
+}
 
-# Client-side JavaScript:
-const eventSource = new EventSource('/api/keylog/stream');
-eventSource.onmessage = (e) => console.log(e.data);
+// Kill by app name
+{
+  "type": "app",
+  "target": "chrome.exe"
+}
+
+// Response
+{
+  "status": "success" | "error",
+  "message": "Process terminated successfully"
+}
 ```
 
-## 🔧 CẤU HÌNH
+#### Screen Capture
 
-### Cài đặt Flask Server
-Trong `app.py`:
-```python
-# Port configuration
-app.run(host='0.0.0.0', port=5001, debug=True)
+**GET `/api/screenshot?save=true`**
+- **Query Params**: 
+  - `save` (optional): `true` (default) | `false` - Save to `screenshots/` folder
+- **Response**: JPEG image binary
+- **Headers**: `Content-Type: image/jpeg`
 
-# Để truy cập từ mạng nội bộ:
-# host='0.0.0.0' cho phép access từ các máy khác
-# debug=True bật auto-reload khi sửa code
+**GET `/screen_feed`**
+- Real-time screen streaming
+- **Response**: MJPEG multipart stream
+- **FPS**: ~10 frames per second
+
+#### Webcam
+
+**GET `/video_feed`**
+- Live webcam streaming
+- **Response**: MJPEG multipart stream
+- **FPS**: 30-60 (configured in C++ server)
+
+**POST `/api/webcam/record`**
+```json
+// Start recording
+{
+  "action": "start"
+}
+
+// Stop recording
+{
+  "action": "stop"
+}
+
+// Response
+{
+  "status": "Recording started - video will be saved to recordings folder"
+}
 ```
 
-### Cài đặt C++ Server
-Chỉnh sửa `src/core/constants.h`:
-- Camera resolution: `CAMERA_WIDTH`, `CAMERA_HEIGHT`
-- Frame rate: `CAMERA_FPS`
-- Chunk size: `DATA_CHUNK_SIZE`
-- Timeouts và buffer sizes
+**POST `/api/webcam/off`**
+```json
+// Response
+{
+  "status": "Stream stopped successfully"
+}
+```
 
-## 📖 TÀI LIỆU THAM KHẢO
+#### Keylogger
 
-Để biết thêm thông tin chi tiết về kiến trúc và triển khai hệ thống, vui lòng tham khảo:
+**POST `/api/keylog/toggle`**
+```json
+// Start keylogger
+{
+  "state": true
+}
 
-- **[.github/copilot-instructions.md](.github/copilot-instructions.md)**: Development guide cho Flask web UI
-- **[Architecture.md](./Architecture.md)**: Đặc tả kiến trúc C++ server và protocol specifications
-- **[requirements.md](./requirements.md)**: Yêu cầu chức năng và kỹ thuật chi tiết
+// Stop keylogger
+{
+  "state": false
+}
 
-## 🐛 TROUBLESHOOTING
+// Response
+{
+  "status": "ok"
+}
+```
+
+**GET `/api/keylog/stream`**
+- Server-Sent Events (SSE) stream
+- **Response**: `text/event-stream`
+- **Format**: 
+  ```
+  data: [2025-01-15 10:30:45] Hello World
+  
+  data: [2025-01-15 10:30:50] [ENTER]
+  
+  ```
+
+**GET `/api/keylog/stats`**
+```json
+{
+  "is_running": true,
+  "total_keys": 1523,
+  "session_keys": 245,
+  "last_activity": "2s ago" | "5m ago" | "Never"
+}
+```
+
+### C++ Server Commands
+
+Send via COMMAND_PORT (8888) as ASCII strings:
+
+| Command | Parameters | Response Channel | Description |
+|---------|-----------|------------------|-------------|
+| `PING` | None | COMMAND_PORT | Health check, returns "PONG" |
+| `PROCESS_LIST` | None | DATA_PORT | CSV list of processes |
+| `APP_LIST` | None | DATA_PORT | CSV list of installed apps |
+| `SYSTEM_STATS` | None | COMMAND_PORT | JSON system statistics |
+| `SCREEN_CAPTURE` | None | DATA_PORT | JPEG screenshot |
+| `START <path>` | Executable path | COMMAND_PORT | Launch process |
+| `STOP <pid>` | Process ID | COMMAND_PORT | Kill process by PID |
+| `APP_START <path>` | Application path | COMMAND_PORT | Start application |
+| `APP_STOP <name>` | Process name | COMMAND_PORT | Stop application by name |
+| `LIVESTREAM` | None | LIVESTREAM_PORT | Start webcam stream |
+| `STOPLIVESTREAM` | None | COMMAND_PORT | Stop webcam stream |
+| `KEYLOG` | None | KEYLOG_PORT | Start keylogger stream |
+| `STOPKEYLOG` | None | COMMAND_PORT | Stop keylogger |
+| `SHUTDOWN` | None | COMMAND_PORT | Shutdown system |
+| `RESTART` | None | COMMAND_PORT | Restart system |
+
+---
+
+## 🔧 Development
+
+### Project Structure
 
 ### Connection Issues
 - **"Connection refused"**: Đảm bảo C++ server đang chạy TRƯỚC khi start Flask
@@ -734,4 +872,4 @@ This project is developed for educational and research purposes. Ensure complian
 - **Tools**: CMake, Visual Studio 2022, Python 3.8+
 
 ---
-**Last Updated**: January 2025 | **Status**: ✅ Production Ready
+**Last Updated**: December 2025 | **Status**: ✅ Production Ready
