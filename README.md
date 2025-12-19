@@ -888,6 +888,6 @@ venv\Scripts\activate
 
 **© 2025 NET-GHOST Project | Chỉ Sử Dụng Cho Giáo Dục**
 
-Cập Nhật Lần Cuối: Tháng 12 2025 | Trạng Thái: ✅ Sẵn Sàng Production
+Cập Nhật Lần Cuối: Tháng 12 2025 | Trạng Thái: ✅ Sẵn Sàng
 
 </div>
