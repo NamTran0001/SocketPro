@@ -100,68 +100,120 @@ NET-GHOST is a powerful **two-tier remote administration system** combining a Py
 
 ## 🏗️ Architecture
 
-### Thiết Kế Hai Tầng (Two-Tier Architecture)
+---
 
-**Flask Web Server (Python)**:
-- **HTTP Server**: Chạy trên port 5001, cung cấp web UI và REST API
-- **Socket Client**: Kết nối persistent đến C++ server qua 4 TCP ports
-- **Real-time Features**: Server-Sent Events (SSE) cho keylogger, MJPEG streaming cho video
-- **Resource Management**: Persistent socket pools với automatic reconnection
+## 🏗️ Architecture
 
-**C++ Server (Backend)**:
-- **Command Thread**: Vòng lặp xử lý lệnh chính (Port 8888)
-- **Data Operations**: Các tác vụ không đồng bộ sử dụng ThreadManager
-- **Specialized Threads**: Keylogger, livestream và file transfer threads được tạo theo yêu cầu
-- **IPv4 Display**: Hiển thị tất cả giao diện mạng khi khởi động
+### System Design
 
-### Giao Thức Truyền Thông Mạng
-
-- **Port 8888 (COMMAND_PORT)**: Kênh lệnh/phản hồi văn bản ASCII
-- **Port 8889 (DATA_PORT)**: Truyền file, screenshots với chunked protocol (24-byte header)
-- **Port 8890 (LIVESTREAM_PORT)**: Streaming video MJPEG (4-byte size prefix + JPEG frames)
-- **Port 8891 (KEYLOGGER_PORT)**: Stream keylogger text data
-- **Protocol**: TCP với persistent connections, automatic retry, timeout handling
-
-### Quản Lý Cấu Hình
-
-**C++ Server** (`src/core/constants.h`):
-```cpp
-// Network Ports
-constexpr int COMMAND_PORT = 8888;
-constexpr int DATA_PORT = 8889;
-constexpr int LIVESTREAM_PORT = 8890;
-constexpr int KEYLOGGER_PORT = 8891;
-
-// Buffer Sizes & Limits
-constexpr int COMMAND_BUFFER_SIZE = 4096;
-constexpr int DATA_CHUNK_SIZE = 1024 * 1024;  // 1MB chunks
-constexpr int MAX_FRAME_SIZE = 10000000;
-constexpr size_t MAX_ALLOWED_FILE_SIZE = 500 * 1024 * 1024; // 500MB
-
-// Timing & Performance
-constexpr int CLIENT_STARTUP_DELAY_MS = 2000;
-constexpr int CAMERA_WIDTH = 1280;
-constexpr int CAMERA_HEIGHT = 720;
-constexpr int CAMERA_FPS = 60;
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         CLIENT (Browser)                         │
+│                    http://localhost:5001                         │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ HTTP/SSE/MJPEG
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    FLASK WEB SERVER (Python)                     │
+│  ┌──────────────┬──────────────┬──────────────┬──────────────┐  │
+│  │   REST API   │  SSE Stream  │ MJPEG Stream │  Templates   │  │
+│  │ /api/control │  /keylog     │  /video_feed │ dashboard.html│ │
+│  └──────────────┴──────────────┴──────────────┴──────────────┘  │
+│                                                                   │
+│  Socket Client (Persistent Connections)                          │
+└──────┬─────────────┬─────────────┬─────────────┬────────────────┘
+       │ TCP 8888    │ TCP 8889    │ TCP 8890    │ TCP 8891
+       │ COMMAND     │ DATA        │ LIVESTREAM  │ KEYLOGGER
+       ▼             ▼             ▼             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    C++ SERVER (Backend)                          │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Command Handler Thread (Main Loop)                       │   │
+│  │  • Process ASCII commands                                 │   │
+│  │  • Route to appropriate handlers                          │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                   │
+│  ┌──────────────┬──────────────┬──────────────┬──────────────┐  │
+│  │ Process Mgr  │ Screen Cap   │ Livestream   │  Keylogger   │  │
+│  │ • List procs │ • Screenshot │ • OpenCV cam │ • Win hooks  │  │
+│  │ • Kill task  │ • JPEG enc   │ • MJPEG enc  │ • SSE stream │  │
+│  └──────────────┴──────────────┴──────────────┴──────────────┘  │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Thread Manager (Worker Pool)                             │   │
+│  │  • Async data operations                                  │   │
+│  │  • Chunked file transfer                                  │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+                    ┌────────────────┐
+                    │  Windows OS    │
+                    │  • WinAPI      │
+                    │  • Processes   │
+                    │  • Registry    │
+                    └────────────────┘
 ```
 
-**Flask Web UI** (`app.py`):
+### Network Protocol Specification
+
+| Port | Channel | Protocol | Purpose | Data Format |
+|------|---------|----------|---------|-------------|
+| **8888** | COMMAND | TCP Text | Send commands, receive ACK | ASCII strings |
+| **8889** | DATA | TCP Binary | Large payloads (CSV, images) | 24-byte header + chunks |
+| **8890** | LIVESTREAM | TCP Binary | Video streaming | 4-byte size + JPEG frames |
+| **8891** | KEYLOGGER | TCP Text | Keystroke streaming | Text lines with timestamps |
+
+#### Data Channel Protocol (Port 8889)
+
+**Header Format** (24 bytes, big-endian):
 ```python
-# Target C++ server
-VM_IP = "127.0.0.1"
-
-# Ports (must match C++ constants.h)
-COMMAND_PORT = 8888
-DATA_PORT = 8889
-LIVESTREAM_PORT = 8890
-KEYLOG_PORT = 8891
-
-# Data protocol header (24 bytes, big-endian)
 HEADER_FORMAT = '>HHIIIII'
-HEADER_SIZE = 24
+# Fields:
+# - cmd (uint16)        : Command code
+# - res (uint16)        : Reserved
+# - total (uint32)      : Total number of chunks
+# - curr (uint32)       : Current chunk index (0-based)
+# - size (uint32)       : Size of current chunk payload (bytes)
+# - total_size (uint32) : Total payload size across all chunks
+# - checksum (uint32)   : CRC32 checksum (optional)
 ```
 
-## 🎮 THAM KHẢO LỆNH & API ENDPOINTS
+**Transfer Flow**:
+1. Flask sends command via COMMAND_PORT (e.g., `"SCREEN_CAPTURE"`)
+2. C++ server acknowledges on COMMAND_PORT
+3. C++ server sends data chunks via DATA_PORT:
+   - Each chunk: [24-byte header][payload bytes]
+   - Loop until `curr >= total - 1`
+4. Flask reassembles chunks into complete payload
+
+#### Livestream Protocol (Port 8890)
+
+**Frame Format**:
+```
+[4 bytes: int32 frame_size][frame_size bytes: JPEG data]
+[4 bytes: int32 frame_size][frame_size bytes: JPEG data]
+...
+```
+
+MJPEG streaming with boundary-based HTTP multipart response:
+```http
+Content-Type: multipart/x-mixed-replace; boundary=frame
+
+--frame
+Content-Type: image/jpeg
+
+[JPEG binary data]
+--frame
+Content-Type: image/jpeg
+
+[JPEG binary data]
+...
+```
+
+---
+
+## 🛠️ Requirements
 
 ### REST API Routes
 
@@ -226,30 +278,216 @@ HEADER_SIZE = 24
 | `STOPKEYLOG` | Dừng keylogger | ACK text |
 | `SHUTDOWN` | Tắt máy server | ACK text |
 
-## 🛠️ NGĂN XẾP CÔNG NGHỆ
+---
 
-### Backend (C++ Server)
-- **Ngôn ngữ**: C++17 với STL và các tính năng hiện đại
-- **Hệ thống Build**: CMake 3.20+ với Visual Studio 2022 generator
-- **Compiler**: MSVC++ (Microsoft Visual C++) 
-- **Platform**: Windows x64 với tích hợp WinAPI
-- **Dependencies**: OpenCV 4.11.0, Winsock2, Windows SDK
+## 🛠️ Requirements
 
-### Frontend (Flask Web UI)
-- **Ngôn ngữ**: Python 3.8+
-- **Web Framework**: Flask 2.x
-- **Dependencies**:
-  - `flask` - Web server và routing
-  - `psutil` - System monitoring (CPU, RAM, Network)
-  - `opencv-python` (cv2) - Video recording
-  - `numpy` - Image processing
+### System Requirements
 
-### Môi Trường Phát Triển
-- **Backend IDE**: Visual Studio 2022 Community với C++ development tools
-- **Frontend**: Any Python IDE (VS Code, PyCharm)
-- **Python Version**: 3.8+ (tested on 3.10+)
+| Component | Requirement | Notes |
+|-----------|-------------|-------|
+| **Operating System** | Windows 10/11 x64 | C++ server requires Windows APIs |
+| **Python** | 3.8 or higher | Tested on Python 3.10+ |
+| **Compiler** | MSVC++ (VS 2022) | For building C++ server |
+| **CMake** | 3.20 or higher | Build system |
+| **RAM** | 4GB minimum, 8GB recommended | For smooth streaming |
+| **Network** | Local or LAN connection | TCP ports 8888-8891 must be accessible |
 
-## 📁 CẤU TRÚC DỰ ÁN
+### Software Dependencies
+
+#### C++ Server (Backend)
+- **Visual Studio 2022 Community** (or Professional/Enterprise)
+  - Workload: "Desktop development with C++"
+  - Components: MSVC v143, Windows SDK, CMake tools
+- **OpenCV 4.11.0**
+  - Download: [opencv.org](https://opencv.org/releases/)
+  - Install path: `C:\opencv` (or configure CMake accordingly)
+  - Required modules: core, imgcodecs, videoio, imgproc
+
+#### Flask Web UI (Frontend)
+```bash
+pip install flask>=3.0.0
+pip install psutil>=5.9.6
+pip install opencv-python>=4.11.0
+pip install numpy>=1.26.2
+```
+
+### Network Configuration
+- **Firewall**: Allow inbound connections on ports 8888-8891
+- **Router**: Port forwarding if accessing from external network (not recommended for security reasons)
+- **Antivirus**: May need to whitelist `server.exe` and Python scripts
+
+---
+
+## 🚀 Quick Start
+
+### 1️⃣ Start C++ Server (Backend)
+
+```powershell
+# Navigate to project directory
+cd c:\python\Projects\Socket\SocketPro
+
+# Build server (if not already built)
+cmake -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Debug --target server
+
+# Run server
+.\build\Debug\server.exe
+```
+
+**Expected output:**
+```
+[SERVER] Starting NET-GHOST Server v2.0...
+[NETWORK] IPv4 Addresses:
+  - 127.0.0.1 (Loopback)
+  - 192.168.1.100 (Ethernet)
+[COMMAND] Listening on 0.0.0.0:8888
+[DATA] Listening on 0.0.0.0:8889
+[LIVESTREAM] Listening on 0.0.0.0:8890
+[KEYLOGGER] Listening on 0.0.0.0:8891
+[SERVER] Ready to accept connections
+```
+
+### 2️⃣ Start Flask Web UI
+
+```bash
+# Activate virtual environment (if using)
+venv\Scripts\activate
+
+# Run Flask application
+python app.py
+```
+
+**Expected output:**
+```
+ * Serving Flask app 'app'
+ * Debug mode: on
+ * Running on http://0.0.0.0:5001 (Press CTRL+C to quit)
+[DEBUG] Creating persistent socket connections...
+[DEBUG] Command socket connected
+[DEBUG] Data socket connected
+```
+
+### 3️⃣ Access Dashboard
+
+Open browser and navigate to:
+```
+http://localhost:5001
+```
+
+🎉 **You should see the NET-GHOST dashboard with system statistics!**
+
+---
+
+## 📦 Installation
+
+### Detailed Setup Guide
+
+#### Step 1: Clone Repository
+
+```bash
+git clone https://github.com/yourusername/SocketPro.git
+cd SocketPro
+```
+
+#### Step 2: Install C++ Dependencies
+
+1. **Install Visual Studio 2022 Community**
+   - Download: [visualstudio.microsoft.com](https://visualstudio.microsoft.com/downloads/)
+   - During installation, select: "Desktop development with C++"
+   - Ensure CMake tools are included
+
+2. **Install OpenCV 4.11.0**
+   ```powershell
+   # Download OpenCV from opencv.org
+   # Extract to C:\opencv\
+   
+   # Add to PATH (PowerShell Admin)
+   $env:PATH += ";C:\opencv\build\x64\vc16\bin"
+   
+   # Verify installation
+   dir C:\opencv\build\x64\vc16\bin\opencv_world4110.dll
+   ```
+
+3. **Configure OpenCV for CMake**
+   ```powershell
+   # Set environment variable
+   [System.Environment]::SetEnvironmentVariable(
+       "OpenCV_DIR",
+       "C:\opencv\build",
+       [System.EnvironmentVariableTarget]::User
+   )
+   ```
+
+#### Step 3: Build C++ Server
+
+```powershell
+# Configure CMake project
+cmake -B build -G "Visual Studio 17 2022" -A x64 ^
+  -DCMAKE_BUILD_TYPE=Debug ^
+  -DOpenCV_DIR=C:\opencv\build
+
+# Build all targets
+cmake --build build --config Debug
+
+# Or build specific target
+cmake --build build --config Debug --target server
+
+# Verify build
+dir build\Debug\server.exe
+```
+
+#### Step 4: Setup Python Environment
+
+```bash
+# Create virtual environment (recommended)
+python -m venv venv
+
+# Activate environment
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Or install manually:
+pip install flask psutil opencv-python numpy
+```
+
+#### Step 5: Configure Connection
+
+Edit [app.py](app.py) to set server IP:
+
+```python
+# Line 15: Set IP address of C++ server machine
+VM_IP = "127.0.0.1"  # Local machine
+# VM_IP = "192.168.1.100"  # Remote machine on LAN
+```
+
+#### Step 6: Create Required Directories
+
+```powershell
+# Flask will auto-create these, but you can prepare them:
+New-Item -ItemType Directory -Force -Path screenshots
+New-Item -ItemType Directory -Force -Path recordings
+New-Item -ItemType Directory -Force -Path templates
+```
+
+#### Step 7: Run Application
+
+```powershell
+# Terminal 1: Start C++ server
+.\build\Debug\server.exe
+
+# Terminal 2: Start Flask UI
+python app.py
+```
+
+---
+
+## ⚙️ Configuration
 
 ```
 SocketPro/
